@@ -1,0 +1,138 @@
+CREATE TABLE IF NOT EXISTS users (
+    uid VARCHAR(255) PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255),
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    avatar TEXT,
+    assigned_classes JSONB DEFAULT '[]'::jsonb,
+    qualification TEXT,
+    subjects JSONB DEFAULT '[]'::jsonb,
+    assigned_courses JSONB DEFAULT '[]'::jsonb,
+    login_id VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    linked_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE IF NOT EXISTS students (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    parent_id VARCHAR(255),
+    class_id VARCHAR(255),
+    grade VARCHAR(255),
+    admission_number VARCHAR(255),
+    age INT,
+    parent_name VARCHAR(255),
+    parent_contact VARCHAR(255),
+    login_id VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id SERIAL PRIMARY KEY,
+    student_id VARCHAR(255) NOT NULL,
+    parent_id VARCHAR(255),
+    class_id VARCHAR(255) NOT NULL,
+    date VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS fees (
+    id VARCHAR(255) PRIMARY KEY,
+    student_id VARCHAR(255) NOT NULL,
+    parent_id VARCHAR(255),
+    total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    amount_paid NUMERIC(10, 2) DEFAULT 0.00,
+    due_date TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(50) NOT NULL,
+    type VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quizzes (
+    id VARCHAR(255) PRIMARY KEY,
+    teacher_id VARCHAR(255) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_published BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id VARCHAR(255) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    date VARCHAR(50) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    description TEXT,
+    audience VARCHAR(50) NOT NULL DEFAULT 'all',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id VARCHAR(255) PRIMARY KEY,
+    student_id VARCHAR(255) NOT NULL,
+    parent_id VARCHAR(255),
+    term VARCHAR(255) NOT NULL,
+    grades JSONB NOT NULL DEFAULT '{}'::jsonb,
+    comments TEXT,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id VARCHAR(255) PRIMARY KEY,
+    class_id VARCHAR(255) NOT NULL,
+    day VARCHAR(50) NOT NULL,
+    subjects JSONB NOT NULL DEFAULT '[]'::jsonb,
+    UNIQUE (class_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS assignments (
+    id VARCHAR(255) PRIMARY KEY,
+    class_id VARCHAR(255) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS grade_configs (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    base_fee NUMERIC(10, 2) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS course_configs (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(255) NOT NULL,
+    department VARCHAR(255),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    user_email VARCHAR(255) NOT NULL,
+    user_name VARCHAR(255) NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    type VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id VARCHAR(255) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    audience VARCHAR(50) NOT NULL DEFAULT 'all',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
