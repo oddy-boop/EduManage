@@ -404,6 +404,17 @@ export const firestoreService = {
     return await response.json();
   },
 
+  async changePassword(uid: string, currentPassword: string, newPassword: string) {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid, currentPassword, newPassword })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to change password');
+    return data;
+  },
+
   async promoteStudents(fromClass: string, toClass: string) {
     const response = await fetch('/api/students/promote', {
       method: 'POST',

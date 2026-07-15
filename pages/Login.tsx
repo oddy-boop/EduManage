@@ -189,32 +189,28 @@ export const Login: React.FC<LoginProps> = () => {
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Icon name="info" className="text-primary" /> Principal's Office
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Credentials registry for testing the basic school system.</p>
+                <p className="text-xs text-slate-500 mt-1">How to get access to the school portal.</p>
               </div>
-              <button 
-                onClick={() => setShowHelpModal(false)} 
+              <button
+                onClick={() => setShowHelpModal(false)}
                 className="size-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <Icon name="close" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
-                <p className="text-xs font-bold text-primary uppercase mb-2">Administrator Access</p>
-                <div className="space-y-1 text-xs">
-                  <p className="text-slate-650 dark:text-slate-300"><span className="font-bold">Email:</span> <code className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded font-mono">admin@school.edu</code></p>
-                  <p className="text-slate-655 dark:text-slate-300"><span className="font-bold">Password:</span> <code className="bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded font-mono">admin123</code></p>
-                </div>
-              </div>
-              
-              <div className="p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-2">Teachers & Parents (ID-Only)</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
-                  These portals use ID-Only logins. You can enter <span className="font-bold text-slate-700 dark:text-slate-300">any mock ID</span> (e.g. <code className="font-mono">T100</code>, <code className="font-mono">P100</code>) to access a mock profile instantly.
+                <p className="text-xs font-bold text-primary uppercase mb-2">Administrators</p>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                  Sign in with your school email and password. Contact your system administrator if you don't have an account yet.
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-2 font-medium">
-                  To test with real database profiles, log in as the Admin, go to **Registration**, create a Teacher or Parent record, and copy their generated ID.
+              </div>
+
+              <div className="p-4 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-2">Teachers & Parents</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                  These portals use your assigned ID number. The Admin issues this ID when your record is created under <span className="font-bold text-slate-700 dark:text-slate-300">Registration</span> — check with the school office if you don't have yours.
                 </p>
               </div>
             </div>

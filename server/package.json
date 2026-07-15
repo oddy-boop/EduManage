@@ -7,10 +7,11 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "pg": "^8.13.3",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

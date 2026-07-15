@@ -4,6 +4,8 @@ import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -27,14 +29,17 @@ function rowToCamel(row) {
   if (!row) return row;
   const newRow = {};
   for (const key of Object.keys(row)) {
-    // Preserve casing of sub-properties inside JSON fields
-    if (['questions', 'grades', 'subjects', 'assigned_classes', 'assigned_courses', 'subjects'].includes(key)) {
-      newRow[snakeToCamel(key)] = row[key];
-    } else {
-      newRow[snakeToCamel(key)] = row[key];
-    }
+    // Password hashes must never reach the client; use the raw row directly where needed server-side.
+    if (key === 'password') continue;
+    newRow[snakeToCamel(key)] = row[key];
   }
   return newRow;
+}
+
+function stripPassword(row) {
+  if (!row) return row;
+  const { password, ...rest } = row;
+  return rest;
 }
 
 function dataToSnake(data) {
@@ -117,17 +122,33 @@ async function startServer() {
       INSERT INTO system_settings (key, value) VALUES ('current_term', 'Term 2') ON CONFLICT (key) DO NOTHING;
     `);
     
+    // Migrate any legacy plaintext passwords (from before hashing was introduced) to bcrypt hashes
+    const passwordRows = await pool.query("SELECT uid, password FROM users WHERE password IS NOT NULL AND password NOT LIKE '$2%'");
+    for (const row of passwordRows.rows) {
+      const hashed = await bcrypt.hash(row.password, 10);
+      await pool.query('UPDATE users SET password = $1 WHERE uid = $2', [hashed, row.uid]);
+    }
+    if (passwordRows.rows.length > 0) {
+      console.log(`Migrated ${passwordRows.rows.length} legacy plaintext password(s) to bcrypt hashes.`);
+    }
+
     // Seed default admin if it doesn't exist
     const adminCheck = await pool.query('SELECT * FROM users WHERE role = $1 OR role = $2', ['admin', 'Admin']);
     if (adminCheck.rows.length === 0) {
+      const defaultAdminPassword = process.env.DEFAULT_ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
+      const hashedAdminPassword = await bcrypt.hash(defaultAdminPassword, 10);
       await pool.query('INSERT INTO users (uid, email, name, role, password) VALUES ($1, $2, $3, $4, $5)', [
         'admin-uid',
         'admin@school.edu',
         'Administrator',
         'Admin',
-        'admin123'
+        hashedAdminPassword
       ]);
-      console.log('Seeded default admin user: admin@school.edu / admin123');
+      console.log('==========================================================');
+      console.log('Seeded default admin account: admin@school.edu');
+      console.log(`Temporary password: ${defaultAdminPassword}`);
+      console.log('Log in and change this password immediately.');
+      console.log('==========================================================');
     }
 
     // Seed test data if not already seeded
@@ -163,13 +184,13 @@ async function startServer() {
         ON CONFLICT (id) DO NOTHING;
       `);
 
-      // 3. Seed Users (Teachers & Parents)
+      // 3. Seed Users (Teachers & Parents) - these roles authenticate by login_id only, no password
       await pool.query(`
-        INSERT INTO users (uid, email, name, role, password, login_id, qualification, assigned_classes, assigned_courses) VALUES
-        ('teacher-1-uid', 'teacher1@school.edu', 'Mr. Albert Mensah', 'Teacher', 'teacher123', 'T100', 'B.Ed Mathematics', '["Grade 10", "Grade 2"]'::jsonb, '["MATH101", "SCI101"]'::jsonb),
-        ('teacher-2-uid', 'teacher2@school.edu', 'Mrs. Emily Taylor', 'Teacher', 'teacher123', 'T101', 'M.A English', '["Grade 10"]'::jsonb, '["ENG101"]'::jsonb),
-        ('parent-1-uid', 'parent1@school.edu', 'Mr. Kwame Nkrumah', 'Parent', 'parent123', 'P100', NULL, '[]'::jsonb, '[]'::jsonb),
-        ('parent-2-uid', 'parent2@school.edu', 'Mrs. Fatima Bello', 'Parent', 'parent123', 'P101', NULL, '[]'::jsonb, '[]'::jsonb)
+        INSERT INTO users (uid, email, name, role, login_id, qualification, assigned_classes, assigned_courses) VALUES
+        ('teacher-1-uid', 'teacher1@school.edu', 'Mr. Albert Mensah', 'Teacher', 'T100', 'B.Ed Mathematics', '["Grade 10", "Grade 2"]'::jsonb, '["MATH101", "SCI101"]'::jsonb),
+        ('teacher-2-uid', 'teacher2@school.edu', 'Mrs. Emily Taylor', 'Teacher', 'T101', 'M.A English', '["Grade 10"]'::jsonb, '["ENG101"]'::jsonb),
+        ('parent-1-uid', 'parent1@school.edu', 'Mr. Kwame Nkrumah', 'Parent', 'P100', NULL, '[]'::jsonb, '[]'::jsonb),
+        ('parent-2-uid', 'parent2@school.edu', 'Mrs. Fatima Bello', 'Parent', 'P101', NULL, '[]'::jsonb, '[]'::jsonb)
         ON CONFLICT (uid) DO NOTHING;
       `);
 
@@ -251,13 +272,77 @@ async function startServer() {
 
   // --- API ROUTES ---
 
+  // AUTH
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { role, identifier, password } = req.body;
+      if (!role || !identifier) {
+        return res.status(400).json({ error: 'Role and identifier are required.' });
+      }
+
+      let result;
+      if (role === 'Admin') {
+        result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND role = $2', [identifier, role]);
+      } else {
+        result = await pool.query('SELECT * FROM users WHERE LOWER(login_id) = LOWER($1) AND role = $2', [identifier, role]);
+      }
+
+      if (result.rowCount === 0) {
+        return res.status(401).json({ error: 'Invalid credentials.' });
+      }
+
+      const account = result.rows[0];
+
+      if (role === 'Admin') {
+        if (!account.password || !password) {
+          return res.status(401).json({ error: 'Invalid credentials.' });
+        }
+        const passwordMatches = await bcrypt.compare(password, account.password);
+        if (!passwordMatches) {
+          return res.status(401).json({ error: 'Invalid credentials.' });
+        }
+      }
+
+      res.json(stripPassword(rowToCamel(account)));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/auth/change-password', async (req, res) => {
+    try {
+      const { uid, currentPassword, newPassword } = req.body;
+      if (!uid || !currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'uid, currentPassword and newPassword are required.' });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+      }
+
+      const result = await pool.query('SELECT * FROM users WHERE uid = $1', [uid]);
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+      const account = result.rows[0];
+      if (!account.password || !(await bcrypt.compare(currentPassword, account.password))) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE uid = $2', [hashedPassword, uid]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // USERS
   app.get('/api/users', async (req, res) => {
     try {
       const { role, email } = req.query;
       let queryStr = 'SELECT * FROM users';
       const params = [];
-      
+
       if (role) {
         queryStr += ' WHERE role = $1';
         params.push(role);
@@ -268,9 +353,9 @@ async function startServer() {
         queryStr += ' WHERE LOWER(login_id) = LOWER($1)';
         params.push(req.query.loginId);
       }
-      
+
       const result = await pool.query(queryStr, params);
-      res.json(result.rows.map(rowToCamel));
+      res.json(result.rows.map(rowToCamel).map(stripPassword));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -282,7 +367,7 @@ async function startServer() {
       if (result.rowCount === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json(rowToCamel(result.rows[0]));
+      res.json(stripPassword(rowToCamel(result.rows[0])));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

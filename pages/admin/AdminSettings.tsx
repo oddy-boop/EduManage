@@ -39,6 +39,12 @@ export const AdminSettings: React.FC = () => {
   const [toClass, setToClass] = useState('');
   const [promoting, setPromoting] = useState(false);
 
+  // Password change states
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+
   useEffect(() => {
     const unsubGrades = firestoreService.getGrades((data) => {
         setGrades(data as GradeConfig[]);
@@ -231,6 +237,31 @@ export const AdminSettings: React.FC = () => {
       alert('Failed to save settings.');
     } finally {
       setSavingTerm(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (newPassword.length < 8) {
+      alert('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert('New password and confirmation do not match.');
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await firestoreService.changePassword(user.uid, currentPassword, newPassword);
+      alert('Password updated successfully.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to change password.');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -503,6 +534,56 @@ export const AdminSettings: React.FC = () => {
       {/* System Settings Tab */}
       {activeTab === 'system' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Account Security */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+            <div>
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Account Security</h3>
+              <p className="text-xs text-slate-500 mt-1">Change your administrator password.</p>
+            </div>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Current Password</label>
+                <input
+                  type="password"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">New Password</label>
+                <input
+                  type="password"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={8}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={changingPassword}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
+              >
+                <Icon name={changingPassword ? 'sync' : 'lock_reset'} className={changingPassword ? 'animate-spin' : ''} />
+                {changingPassword ? 'Updating...' : 'Update Password'}
+              </button>
+            </form>
+          </div>
+
           {/* Term Configuration */}
           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
             <div>
