@@ -253,7 +253,7 @@ export const AdminSettings: React.FC = () => {
     }
     setChangingPassword(true);
     try {
-      await firestoreService.changePassword(user.uid, currentPassword, newPassword);
+      await firestoreService.changePassword(currentPassword, newPassword);
       alert('Password updated successfully.');
       setCurrentPassword('');
       setNewPassword('');

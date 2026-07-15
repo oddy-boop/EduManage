@@ -21,7 +21,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const SESSION_STORAGE_KEY = 'edumanage.session';
 
-function loadStoredUser(): AuthUser | null {
+interface StoredSession {
+  token: string;
+  user: AuthUser;
+}
+
+function loadStoredSession(): StoredSession | null {
   try {
     const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -30,12 +35,22 @@ function loadStoredUser(): AuthUser | null {
   }
 }
 
+// Exported so the API client (lib/services.ts) can attach the session token
+// to requests without needing to be a React component.
+export function getSessionToken(): string | null {
+  return loadStoredSession()?.token || null;
+}
+
+export function clearSession() {
+  sessionStorage.removeItem(SESSION_STORAGE_KEY);
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(() => loadStoredUser());
+  const [user, setUser] = useState<AuthUser | null>(() => loadStoredSession()?.user || null);
   const [loading] = useState(false);
 
   const handleSignOut = useCallback(async () => {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    clearSession();
     setUser(null);
   }, []);
 
@@ -53,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      const account = await res.json();
+      const { token, user: account } = await res.json();
       const authUser: AuthUser = {
         uid: account.uid,
         email: account.email || null,
@@ -63,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         assignedClasses: account.assignedClasses || [],
       };
 
-      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ token, user: authUser }));
       setUser(authUser);
       return true;
     } catch (err) {

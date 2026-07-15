@@ -1,11 +1,28 @@
+import { getSessionToken, clearSession } from './AuthContext';
+
 // Generic service to handle database operations via REST API
+// Attaches the session token to every request and forces a re-login if the
+// server reports the session is invalid or expired.
+async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = getSessionToken();
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string> || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(url, { ...options, headers });
+  if (response.status === 401) {
+    clearSession();
+    window.location.reload();
+  }
+  return response;
+}
+
 const mockOnSnapshot = (url: string, callback: (data: any) => void) => {
   let active = true;
   let lastDataString = '';
-  
+
   const fetchData = async () => {
     try {
-      const response = await fetch(url);
+      const response = await apiFetch(url);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       const dataString = JSON.stringify(data);
@@ -30,7 +47,7 @@ const mockOnSnapshot = (url: string, callback: (data: any) => void) => {
 export const firestoreService = {
   // --- USER PROFILES ---
   async createUserProfile(uid: string, data: any) {
-    const response = await fetch('/api/users', {
+    const response = await apiFetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid, ...data })
@@ -41,7 +58,7 @@ export const firestoreService = {
 
   // --- ATTENDANCE ---
   async markAttendance(data: { studentId: string; parentId?: string; classId: string; date: string; status: string }) {
-    const response = await fetch('/api/attendance', {
+    const response = await apiFetch('/api/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -61,7 +78,7 @@ export const firestoreService = {
   },
 
   async registerStudent(studentData: any) {
-    const response = await fetch('/api/students', {
+    const response = await apiFetch('/api/students', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(studentData)
@@ -71,7 +88,7 @@ export const firestoreService = {
   },
 
   async registerStudentWithId(studentId: string, studentData: any) {
-    const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, {
+    const response = await apiFetch(`/api/students/${encodeURIComponent(studentId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(studentData)
@@ -109,7 +126,7 @@ export const firestoreService = {
   },
 
   async updateStudent(studentId: string, data: any) {
-    const response = await fetch(`/api/students/${encodeURIComponent(studentId)}`, {
+    const response = await apiFetch(`/api/students/${encodeURIComponent(studentId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -119,7 +136,7 @@ export const firestoreService = {
   },
 
   async updateUser(userId: string, data: any) {
-    const response = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+    const response = await apiFetch(`/api/users/${encodeURIComponent(userId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -129,7 +146,7 @@ export const firestoreService = {
   },
 
   async updateFee(feeId: string, data: any) {
-    const response = await fetch(`/api/fees/${encodeURIComponent(feeId)}`, {
+    const response = await apiFetch(`/api/fees/${encodeURIComponent(feeId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -140,7 +157,7 @@ export const firestoreService = {
 
   // --- ADMIN STATS ---
   async getGlobalStats() {
-    const response = await fetch('/api/stats/global');
+    const response = await apiFetch('/api/stats/global');
     if (!response.ok) throw new Error('Failed to fetch global stats');
     return await response.json();
   },
@@ -176,7 +193,7 @@ export const firestoreService = {
   },
 
   async updateReportStatus(reportId: string, status: string) {
-    const response = await fetch(`/api/reports/${encodeURIComponent(reportId)}`, {
+    const response = await apiFetch(`/api/reports/${encodeURIComponent(reportId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
@@ -186,7 +203,7 @@ export const firestoreService = {
   },
 
   async createReport(reportData: { studentId: string; parentId?: string; [key: string]: any }) {
-    const response = await fetch('/api/reports', {
+    const response = await apiFetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reportData)
@@ -206,7 +223,7 @@ export const firestoreService = {
   },
 
   async createAssignment(assignmentData: any) {
-    const response = await fetch('/api/assignments', {
+    const response = await apiFetch('/api/assignments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(assignmentData)
@@ -216,7 +233,7 @@ export const firestoreService = {
   },
 
   async deleteAssignment(assignmentId: string) {
-    const response = await fetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+    const response = await apiFetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete assignment');
@@ -224,7 +241,7 @@ export const firestoreService = {
 
   // --- TEACHERS ---
   async registerTeacher(teacherData: any) {
-    const response = await fetch('/api/users', {
+    const response = await apiFetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...teacherData, role: 'Teacher' })
@@ -234,7 +251,7 @@ export const firestoreService = {
   },
 
   async registerTeacherWithId(teacherId: string, teacherData: any) {
-    const response = await fetch(`/api/users/${encodeURIComponent(teacherId)}`, {
+    const response = await apiFetch(`/api/users/${encodeURIComponent(teacherId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...teacherData, role: 'Teacher' })
@@ -249,7 +266,7 @@ export const firestoreService = {
 
   // --- FEES ---
   async createFee(feeData: any) {
-    const response = await fetch('/api/fees', {
+    const response = await apiFetch('/api/fees', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(feeData)
@@ -272,7 +289,7 @@ export const firestoreService = {
 
   // --- QUIZZES ---
   async saveQuiz(quizData: any) {
-    const response = await fetch('/api/quizzes', {
+    const response = await apiFetch('/api/quizzes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(quizData)
@@ -291,7 +308,7 @@ export const firestoreService = {
 
   // --- EVENTS ---
   async createEvent(eventData: any) {
-    const response = await fetch('/api/events', {
+    const response = await apiFetch('/api/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(eventData)
@@ -310,7 +327,7 @@ export const firestoreService = {
 
   // --- ANNOUNCEMENTS ---
   async createAnnouncement(announcementData: { title: string; content: string; audience: string }) {
-    const response = await fetch('/api/announcements', {
+    const response = await apiFetch('/api/announcements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(announcementData)
@@ -325,7 +342,7 @@ export const firestoreService = {
   },
 
   async deleteAnnouncement(id: string) {
-    const response = await fetch(`/api/announcements/${encodeURIComponent(id)}`, {
+    const response = await apiFetch(`/api/announcements/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete announcement');
@@ -335,7 +352,7 @@ export const firestoreService = {
   // --- AUDIT LOGS ---
   async logActivity(data: { userId: string; userEmail: string; userName: string; action: string; details: string; type: 'registration' | 'fee_update' | 'config_change' | 'other' }) {
     try {
-      const response = await fetch('/api/audit_logs', {
+      const response = await apiFetch('/api/audit_logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -353,7 +370,7 @@ export const firestoreService = {
 
   // --- GRADE & COURSE CONFIG OPERATIONS ---
   async createGradeConfig(id: string, data: any) {
-    const response = await fetch(`/api/gradeConfigs/${encodeURIComponent(id)}`, {
+    const response = await apiFetch(`/api/gradeConfigs/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -363,7 +380,7 @@ export const firestoreService = {
   },
 
   async deleteGradeConfig(id: string) {
-    const response = await fetch(`/api/gradeConfigs/${encodeURIComponent(id)}`, {
+    const response = await apiFetch(`/api/gradeConfigs/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete grade configuration');
@@ -371,7 +388,7 @@ export const firestoreService = {
   },
 
   async createCourseConfig(id: string, data: any) {
-    const response = await fetch(`/api/courseConfigs/${encodeURIComponent(id)}`, {
+    const response = await apiFetch(`/api/courseConfigs/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -381,7 +398,7 @@ export const firestoreService = {
   },
 
   async deleteCourseConfig(id: string) {
-    const response = await fetch(`/api/courseConfigs/${encodeURIComponent(id)}`, {
+    const response = await apiFetch(`/api/courseConfigs/${encodeURIComponent(id)}`, {
       method: 'DELETE'
     });
     if (!response.ok) throw new Error('Failed to delete course configuration');
@@ -389,13 +406,13 @@ export const firestoreService = {
   },
 
   async getSystemSettings() {
-    const response = await fetch('/api/systemSettings');
+    const response = await apiFetch('/api/systemSettings');
     if (!response.ok) throw new Error('Failed to fetch system settings');
     return await response.json();
   },
 
   async updateSystemSetting(key: string, value: string) {
-    const response = await fetch(`/api/systemSettings/${encodeURIComponent(key)}`, {
+    const response = await apiFetch(`/api/systemSettings/${encodeURIComponent(key)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value })
@@ -404,11 +421,11 @@ export const firestoreService = {
     return await response.json();
   },
 
-  async changePassword(uid: string, currentPassword: string, newPassword: string) {
-    const response = await fetch('/api/auth/change-password', {
+  async changePassword(currentPassword: string, newPassword: string) {
+    const response = await apiFetch('/api/auth/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid, currentPassword, newPassword })
+      body: JSON.stringify({ currentPassword, newPassword })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to change password');
@@ -416,7 +433,7 @@ export const firestoreService = {
   },
 
   async promoteStudents(fromClass: string, toClass: string) {
-    const response = await fetch('/api/students/promote', {
+    const response = await apiFetch('/api/students/promote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fromClass, toClass })

@@ -6,8 +6,15 @@ import path from 'path';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.warn('WARNING: JWT_SECRET is not set in the environment. Using a random secret for this run only - all sessions will be invalidated on restart. Set JWT_SECRET in server/.env for production.');
+  return crypto.randomBytes(48).toString('base64');
+})();
+const TOKEN_TTL = '12h';
 
 const app = express();
 app.use(cors());
@@ -40,6 +47,45 @@ function stripPassword(row) {
   if (!row) return row;
   const { password, ...rest } = row;
   return rest;
+}
+
+// --- AUTH MIDDLEWARE ---
+
+function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required.' });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = { uid: payload.uid, role: payload.role };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+  }
+}
+
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+    }
+    next();
+  };
+}
+
+// Allows Admin, or the authenticated user themselves (matched against a uid taken from the request)
+function requireSelfOrAdmin(getTargetUid) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required.' });
+    }
+    if (req.user.role === 'Admin' || req.user.uid === getTargetUid(req)) {
+      return next();
+    }
+    return res.status(403).json({ error: 'You do not have permission to perform this action.' });
+  };
 }
 
 function dataToSnake(data) {
@@ -305,17 +351,19 @@ async function startServer() {
         }
       }
 
-      res.json(stripPassword(rowToCamel(account)));
+      const token = jwt.sign({ uid: account.uid, role: account.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+      res.json({ token, user: stripPassword(rowToCamel(account)) });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/auth/change-password', async (req, res) => {
+  app.post('/api/auth/change-password', authenticate, async (req, res) => {
     try {
-      const { uid, currentPassword, newPassword } = req.body;
-      if (!uid || !currentPassword || !newPassword) {
-        return res.status(400).json({ error: 'uid, currentPassword and newPassword are required.' });
+      const { currentPassword, newPassword } = req.body;
+      const uid = req.user.uid;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'currentPassword and newPassword are required.' });
       }
       if (newPassword.length < 8) {
         return res.status(400).json({ error: 'New password must be at least 8 characters.' });
@@ -339,7 +387,7 @@ async function startServer() {
   });
 
   // USERS
-  app.get('/api/users', async (req, res) => {
+  app.get('/api/users', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const { role, email } = req.query;
       let queryStr = 'SELECT * FROM users';
@@ -363,7 +411,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/users/:uid', async (req, res) => {
+  app.get('/api/users/:uid', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('SELECT * FROM users WHERE uid = $1', [req.params.uid]);
       if (result.rowCount === 0) {
@@ -375,7 +423,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users', async (req, res) => {
+  app.post('/api/users', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at } = snakeData;
@@ -407,7 +455,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/users/:uid', async (req, res) => {
+  app.put('/api/users/:uid', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at } = snakeData;
@@ -440,7 +488,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/users/:uid', async (req, res) => {
+  app.patch('/api/users/:uid', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const keys = Object.keys(snakeData);
@@ -471,7 +519,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/users/:uid', async (req, res) => {
+  app.delete('/api/users/:uid', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('DELETE FROM users WHERE uid = $1 RETURNING *', [req.params.uid]);
       if (result.rowCount === 0) {
@@ -484,13 +532,26 @@ async function startServer() {
   });
 
   // STUDENTS
-  app.get('/api/students', async (req, res) => {
+  app.get('/api/students', authenticate, async (req, res) => {
     try {
       const { parentId, classId, grades } = req.query;
+
+      if (parentId) {
+        if (req.user.role !== 'Admin' && req.user.uid !== parentId) {
+          return res.status(403).json({ error: 'You can only view your own children.' });
+        }
+      } else if (classId || grades) {
+        if (!['Admin', 'Teacher'].includes(req.user.role)) {
+          return res.status(403).json({ error: 'You do not have permission to view this roster.' });
+        }
+      } else if (req.user.role !== 'Admin') {
+        return res.status(403).json({ error: 'You do not have permission to view the full student roster.' });
+      }
+
       let queryStr = 'SELECT * FROM students';
       const params = [];
       let paramCount = 1;
-      
+
       if (parentId) {
         queryStr += ` WHERE parent_id = $${paramCount++}`;
         params.push(parentId);
@@ -511,7 +572,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/students', async (req, res) => {
+  app.post('/api/students', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, name, parent_id, class_id, grade, admission_number, age, parent_name, parent_contact, login_id } = snakeData;
@@ -530,7 +591,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/students/:id', async (req, res) => {
+  app.put('/api/students/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const studentId = req.params.id;
       const snakeData = dataToSnake(req.body);
@@ -554,7 +615,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/students/:id', async (req, res) => {
+  app.patch('/api/students/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const keys = Object.keys(snakeData);
@@ -577,7 +638,7 @@ async function startServer() {
   });
 
   // ATTENDANCE
-  app.get('/api/attendance', async (req, res) => {
+  app.get('/api/attendance', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const { classId } = req.query;
       let queryStr = 'SELECT * FROM attendance';
@@ -595,13 +656,16 @@ async function startServer() {
     }
   });
 
-  app.get('/api/attendance/summary', async (req, res) => {
+  app.get('/api/attendance/summary', authenticate, async (req, res) => {
     try {
       const { studentId, parentId } = req.query;
       if (!studentId) {
         return res.status(400).json({ error: 'Missing studentId' });
       }
-      
+      if (req.user.role === 'Parent' && req.user.uid !== parentId) {
+        return res.status(403).json({ error: 'You can only view attendance for your own children.' });
+      }
+
       let queryStr = 'SELECT * FROM attendance WHERE student_id = $1';
       const params = [studentId];
       
@@ -622,7 +686,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/attendance', async (req, res) => {
+  app.post('/api/attendance', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { student_id, parent_id, class_id, date, status } = snakeData;
@@ -643,9 +707,27 @@ async function startServer() {
   });
 
   // FEES
-  app.get('/api/fees', async (req, res) => {
+  app.get('/api/fees', authenticate, async (req, res) => {
     try {
       const { parentId, studentId } = req.query;
+
+      if (req.user.role === 'Parent') {
+        if (parentId && parentId !== req.user.uid) {
+          return res.status(403).json({ error: 'You can only view fees for your own children.' });
+        }
+        if (studentId && !parentId) {
+          const studentCheck = await pool.query('SELECT parent_id FROM students WHERE id = $1', [studentId]);
+          if (studentCheck.rowCount === 0 || studentCheck.rows[0].parent_id !== req.user.uid) {
+            return res.status(403).json({ error: 'You can only view fees for your own children.' });
+          }
+        }
+        if (!parentId && !studentId) {
+          return res.status(403).json({ error: 'You can only view fees for your own children.' });
+        }
+      } else if (req.user.role !== 'Admin') {
+        return res.status(403).json({ error: 'You do not have permission to view fee records.' });
+      }
+
       let queryStr = `
         SELECT f.*, s.name as student_name 
         FROM fees f
@@ -670,7 +752,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/fees', async (req, res) => {
+  app.post('/api/fees', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, student_id, parent_id, total_amount, amount_paid, due_date, status, type } = snakeData;
@@ -689,7 +771,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/fees/:id', async (req, res) => {
+  app.patch('/api/fees/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const keys = Object.keys(snakeData);
@@ -721,7 +803,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/quizzes', async (req, res) => {
+  app.post('/api/quizzes', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, teacher_id, title, description, questions, is_published } = snakeData;
@@ -741,7 +823,7 @@ async function startServer() {
   });
 
   // EVENTS
-  app.get('/api/events', async (req, res) => {
+  app.get('/api/events', authenticate, async (req, res) => {
     try {
       const { audience } = req.query;
       let queryStr = 'SELECT * FROM events';
@@ -759,7 +841,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/events', async (req, res) => {
+  app.post('/api/events', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, title, date, type, description, audience } = snakeData;
@@ -779,7 +861,7 @@ async function startServer() {
   });
 
   // ANNOUNCEMENTS
-  app.get('/api/announcements', async (req, res) => {
+  app.get('/api/announcements', authenticate, async (req, res) => {
     try {
       const { audience } = req.query;
       let queryStr = 'SELECT * FROM announcements';
@@ -799,7 +881,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/announcements', async (req, res) => {
+  app.post('/api/announcements', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, title, content, audience } = snakeData;
@@ -818,7 +900,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/announcements/:id', async (req, res) => {
+  app.delete('/api/announcements/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('DELETE FROM announcements WHERE id = $1 RETURNING *', [req.params.id]);
       if (result.rowCount === 0) {
@@ -831,9 +913,16 @@ async function startServer() {
   });
 
   // REPORTS
-  app.get('/api/reports', async (req, res) => {
+  app.get('/api/reports', authenticate, async (req, res) => {
     try {
       const { studentId, parentId, status } = req.query;
+
+      if (req.user.role !== 'Admin') {
+        if (!(studentId && parentId && req.user.role === 'Parent' && req.user.uid === parentId)) {
+          return res.status(403).json({ error: 'You do not have permission to view these reports.' });
+        }
+      }
+
       let queryStr = `
         SELECT r.*, s.name as student_name, s.class_id 
         FROM reports r
@@ -869,7 +958,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/reports', async (req, res) => {
+  app.post('/api/reports', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, student_id, parent_id, term, grades, total_score, grade, comments, status } = snakeData;
@@ -891,7 +980,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/reports/:id', async (req, res) => {
+  app.patch('/api/reports/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const keys = Object.keys(snakeData);
@@ -921,7 +1010,7 @@ async function startServer() {
   });
 
   // SCHEDULES
-  app.get('/api/schedules', async (req, res) => {
+  app.get('/api/schedules', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const { classId } = req.query;
       let queryStr = 'SELECT * FROM schedules';
@@ -940,7 +1029,7 @@ async function startServer() {
   });
 
   // ASSIGNMENTS
-  app.get('/api/assignments', async (req, res) => {
+  app.get('/api/assignments', authenticate, async (req, res) => {
     try {
       const { classId } = req.query;
       let queryStr = 'SELECT * FROM assignments';
@@ -958,7 +1047,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/assignments', async (req, res) => {
+  app.post('/api/assignments', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, class_id, title, description, due_date } = snakeData;
@@ -977,7 +1066,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/assignments/:id', async (req, res) => {
+  app.delete('/api/assignments/:id', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const result = await pool.query('DELETE FROM assignments WHERE id = $1 RETURNING *', [req.params.id]);
       if (result.rowCount === 0) {
@@ -990,7 +1079,7 @@ async function startServer() {
   });
 
   // GRADE CONFIGS
-  app.get('/api/grades', async (req, res) => {
+  app.get('/api/grades', authenticate, async (req, res) => {
     try {
       const result = await pool.query('SELECT * FROM grade_configs');
       res.json(result.rows.map(rowToCamel));
@@ -999,7 +1088,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/gradeConfigs/:id', async (req, res) => {
+  app.put('/api/gradeConfigs/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const configId = req.params.id;
       const snakeData = dataToSnake(req.body);
@@ -1020,7 +1109,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/gradeConfigs/:id', async (req, res) => {
+  app.delete('/api/gradeConfigs/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('DELETE FROM grade_configs WHERE id = $1 RETURNING *', [req.params.id]);
       if (result.rowCount === 0) {
@@ -1033,7 +1122,7 @@ async function startServer() {
   });
 
   // COURSE CONFIGS
-  app.get('/api/courses', async (req, res) => {
+  app.get('/api/courses', authenticate, async (req, res) => {
     try {
       const result = await pool.query('SELECT * FROM course_configs');
       res.json(result.rows.map(rowToCamel));
@@ -1042,7 +1131,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/courseConfigs/:id', async (req, res) => {
+  app.put('/api/courseConfigs/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const configId = req.params.id;
       const snakeData = dataToSnake(req.body);
@@ -1063,7 +1152,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/courseConfigs/:id', async (req, res) => {
+  app.delete('/api/courseConfigs/:id', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('DELETE FROM course_configs WHERE id = $1 RETURNING *', [req.params.id]);
       if (result.rowCount === 0) {
@@ -1076,7 +1165,7 @@ async function startServer() {
   });
 
   // SYSTEM SETTINGS
-  app.get('/api/systemSettings', async (req, res) => {
+  app.get('/api/systemSettings', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('SELECT * FROM system_settings');
       const settings = {};
@@ -1089,7 +1178,7 @@ async function startServer() {
     }
   });
 
-  app.put('/api/systemSettings/:key', async (req, res) => {
+  app.put('/api/systemSettings/:key', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const { value } = req.body;
       const result = await pool.query(
@@ -1103,7 +1192,7 @@ async function startServer() {
   });
 
   // BATCH PROMOTION
-  app.post('/api/students/promote', async (req, res) => {
+  app.post('/api/students/promote', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const { fromClass, toClass } = req.body;
       if (!fromClass || !toClass) {
@@ -1120,7 +1209,7 @@ async function startServer() {
   });
 
   // AUDIT LOGS
-  app.get('/api/audit_logs', async (req, res) => {
+  app.get('/api/audit_logs', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC');
       res.json(result.rows.map(rowToCamel));
@@ -1129,7 +1218,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/audit_logs', async (req, res) => {
+  app.post('/api/audit_logs', authenticate, async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
       const { user_id, user_email, user_name, action, details, type, timestamp } = snakeData;
@@ -1149,7 +1238,7 @@ async function startServer() {
   });
 
   // STATS (GLOBAL & DISTRIBUTION)
-  app.get('/api/stats/global', async (req, res) => {
+  app.get('/api/stats/global', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const usersRes = await pool.query('SELECT COUNT(*)::int as count FROM users WHERE role = \'Teacher\'');
       const studentsRes = await pool.query('SELECT COUNT(*)::int as count FROM students');
@@ -1163,7 +1252,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/stats/distribution', async (req, res) => {
+  app.get('/api/stats/distribution', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const result = await pool.query('SELECT class_id as grade, COUNT(*)::int as count FROM students GROUP BY class_id');
       const distribution = result.rows.map(row => ({
