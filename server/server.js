@@ -115,6 +115,8 @@ async function startServer() {
       ALTER TABLE events ADD COLUMN IF NOT EXISTS audience VARCHAR(50) DEFAULT 'all';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255);
       ALTER TABLE fees ADD COLUMN IF NOT EXISTS term VARCHAR(100) DEFAULT 'Term 2';
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS total_score NUMERIC(5, 2);
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS grade VARCHAR(10);
       CREATE TABLE IF NOT EXISTS system_settings (
         key VARCHAR(100) PRIMARY KEY,
         value VARCHAR(255) NOT NULL
@@ -870,15 +872,18 @@ async function startServer() {
   app.post('/api/reports', async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { id, student_id, parent_id, term, grades, comments, status } = snakeData;
+      const { id, student_id, parent_id, term, grades, total_score, grade, comments, status } = snakeData;
       const reportId = id || Math.random().toString(36).substring(2, 15);
-      
+
       const queryStr = `
-        INSERT INTO reports (id, student_id, parent_id, term, grades, comments, status)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+        INSERT INTO reports (id, student_id, parent_id, term, grades, total_score, grade, comments, status)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
         RETURNING *
       `;
-      const params = [reportId, student_id, parent_id || null, term, JSON.stringify(grades || {}), comments || null, status || 'pending'];
+      const params = [
+        reportId, student_id, parent_id || null, term, JSON.stringify(grades || {}),
+        total_score ?? null, grade || null, comments || null, status || 'pending'
+      ];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {

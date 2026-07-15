@@ -210,7 +210,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">{assignment.title}</h4>
-                      <p className="text-xs text-slate-400">{assignment.subject} • Due {assignment.dueDate?.toDate ? assignment.dueDate.toDate().toLocaleDateString() : 'TBD'}</p>
+                      <p className="text-xs text-slate-400">{assignment.subject} • Due {assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'TBD'}</p>
                     </div>
                   </div>
                   <Icon name="chevron_right" className="text-slate-300 group-hover:text-primary transition-colors" />

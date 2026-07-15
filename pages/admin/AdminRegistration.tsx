@@ -662,7 +662,7 @@ export const AdminRegistration: React.FC = () => {
                          </span>
                       </td>
                       <td className="px-6 py-4 text-xs font-medium text-slate-500">
-                        {member.createdAt?.toDate ? member.createdAt.toDate().toLocaleDateString() : 'Just now'}
+                        {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : 'Just now'}
                       </td>
                       <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
                          <button 

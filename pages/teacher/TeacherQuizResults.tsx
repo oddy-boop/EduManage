@@ -23,20 +23,15 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
     return () => unsub();
   }, []);
 
-  // Mocked results for the selected quiz since we don't have a submission service yet
-  const students = useMemo(() => {
-    return [
-      { rank: 1, name: 'Alice Freeman', id: 'STU-2023-902', time: '28m 12s', score: '98%', grade: 'A+', status: 'Graded', img: 'https://picsum.photos/seed/alice/100', feedback: 'Outstanding performance!' },
-      { rank: 2, name: 'Ethan Hunt', id: 'STU-2023-441', time: '30m 45s', score: '95%', grade: 'A', status: 'Graded', img: 'https://picsum.photos/seed/ethan/100', feedback: 'Great analysis in section 2.' },
-      { rank: 3, name: 'Charlie Lee', id: 'STU-2023-112', time: '42m 00s', score: '88%', grade: 'B+', status: 'Graded', img: 'https://picsum.photos/seed/charlie/100', feedback: 'Good work, watch the time.' },
-      { rank: 4, name: 'Diana Evans', id: 'STU-2023-332', time: '35m 20s', score: '85%', grade: 'B', status: 'Graded', img: 'https://picsum.photos/seed/diana/100', feedback: 'Review cellular respiration.' },
-    ];
-  }, [selectedQuiz]);
+  // Quiz submissions are not yet stored anywhere in the database, so there is
+  // no real results data to show here. Surface that honestly instead of
+  // displaying fabricated placeholder students.
+  const students: any[] = [];
 
   const stats = useMemo(() => {
     const scores = students.map(s => parseInt(s.score.replace(/[^0-9]/g, '')) || 0);
     const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-    return { avgScore, completedCount: students.length, totalClassSize: 30 };
+    return { avgScore, completedCount: students.length, totalClassSize: 0 };
   }, [students]);
 
   if (loading) {
@@ -87,9 +82,9 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
               <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{stats.avgScore}%</p>
           </div>
           <div className="bg-slate-900 text-slate-400 p-6 rounded-2xl shadow-xl flex flex-col justify-end relative overflow-hidden">
-              <Icon name="verified_user" className="absolute top-[-20px] right-[-20px] text-8xl opacity-10 text-white" />
+              <Icon name="construction" className="absolute top-[-20px] right-[-20px] text-8xl opacity-10 text-white" />
               <p className="text-[10px] font-black uppercase tracking-widest mb-1">Status</p>
-              <p className="text-xl font-bold text-white">Records Finalized</p>
+              <p className="text-xl font-bold text-white">Not Yet Available</p>
           </div>
       </div>
 
@@ -109,6 +104,13 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                      {students.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-8 py-16 text-center text-slate-400 italic">
+                            Quiz result collection isn't wired up yet — student submissions aren't being saved to a results table. This view will populate once that's built.
+                          </td>
+                        </tr>
+                      )}
                       {students.map((row, i) => (
                           <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-all group">
                               <td className="px-8 py-5">

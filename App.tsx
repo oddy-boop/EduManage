@@ -16,7 +16,6 @@ import { AdminRegistration } from './pages/admin/AdminRegistration';
 import { AdminFees } from './pages/admin/AdminFees';
 import { AdminCalendar } from './pages/admin/AdminCalendar';
 import { AdminApprovals } from './pages/admin/AdminApprovals';
-import { AdminFeeConfig } from './pages/admin/AdminFeeConfig';
 import { AdminSettings } from './pages/admin/AdminSettings';
 import { AdminAuditLogs } from './pages/admin/AdminAuditLogs';
 import { AdminAnnouncements } from './pages/admin/AdminAnnouncements';
@@ -118,8 +117,6 @@ const App: React.FC = () => {
         {currentView === View.ADMIN_FEES && <AdminFees />}
         {currentView === View.ADMIN_CALENDAR && <AdminCalendar />}
         {currentView === View.ADMIN_APPROVALS && <AdminApprovals />}
-        {/* Reuse AdminFees or redirect to config if needed, usually linked from Fees page */}
-        {currentView === View.ADMIN_FEE_CONFIG && <AdminFeeConfig />}
         {currentView === View.ADMIN_SETTINGS && <AdminSettings />}
         {currentView === View.ADMIN_AUDIT_LOGS && <AdminAuditLogs />}
         {currentView === View.ADMIN_ANNOUNCEMENTS && <AdminAnnouncements />}

@@ -59,8 +59,9 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ onNavigate }) 
     };
   }, [activeChild]);
 
-  const unpaidFeesCount = fees.filter(f => f.status === 'unpaid').length;
-  const totalAmount = fees.filter(f => f.status === 'unpaid').reduce((sum, f) => sum + (f.amount || 0), 0);
+  const isUnpaid = (f: any) => f.status === 'pending' || f.status === 'overdue';
+  const unpaidFeesCount = fees.filter(isUnpaid).length;
+  const totalAmount = fees.filter(isUnpaid).reduce((sum, f) => sum + ((parseFloat(f.totalAmount) || 0) - (parseFloat(f.amountPaid) || 0)), 0);
 
   if (loading) {
     return (
@@ -114,11 +115,11 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ onNavigate }) 
           <div className="flex items-center gap-2 text-[10px] bg-white/20 w-fit px-2 py-0.5 rounded-full font-bold uppercase">
              <Icon name="priority_high" className="text-[12px]" /> {unpaidFeesCount} Invoices Pending
           </div>
-          <button 
+          <button
             onClick={() => onNavigate(View.PARENT_FEES)}
             className="w-full mt-6 py-2.5 bg-white text-primary rounded-xl text-sm font-bold hover:bg-blue-50 transition-colors"
           >
-            Process Payment
+            View Fee Statement
           </button>
         </div>
 
@@ -223,7 +224,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ onNavigate }) 
                 <div className="flex-grow text-xs">
                   <div className="flex justify-between">
                     <p className={`font-bold text-blue-600 uppercase tracking-wider`}>{task.subject}</p>
-                    <span className={`font-bold text-slate-400 px-1.5 py-0.5 rounded uppercase`}>Due {task.dueDate?.toDate ? task.dueDate.toDate().toLocaleDateString() : 'TBD'}</span>
+                    <span className={`font-bold text-slate-400 px-1.5 py-0.5 rounded uppercase`}>Due {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'TBD'}</span>
                   </div>
                   <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">{task.title}</p>
                 </div>
@@ -256,11 +257,11 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ onNavigate }) 
                       <Icon name={fee.status === 'paid' ? 'check' : 'schedule'} className="text-sm" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold">{fee.title || 'Tuition Fee'}</p>
-                      <p className="text-[10px] text-slate-400">{fee.dueDate?.toDate ? `Due ${fee.dueDate.toDate().toLocaleDateString()}` : 'No date'}</p>
+                      <p className="text-sm font-bold">{fee.type || 'Tuition Fee'}</p>
+                      <p className="text-[10px] text-slate-400">{fee.dueDate ? `Due ${new Date(fee.dueDate).toLocaleDateString()}` : 'No date'}</p>
                     </div>
                   </div>
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">GH₵{fee.amount?.toLocaleString()}</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">GH₵{(parseFloat(fee.totalAmount) || 0).toLocaleString()}</p>
                 </div>
               ))}
             </div>

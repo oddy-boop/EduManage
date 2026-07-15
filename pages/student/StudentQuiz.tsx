@@ -102,10 +102,10 @@ export const StudentQuiz: React.FC = () => {
     });
 
     try {
-      // In a real app we'd submit this score to Firestore
+      // NOTE: quiz result persistence is not implemented yet - this score is
+      // only shown locally and is not saved anywhere for the teacher to see.
       setScore(calculatedScore);
       setIsSubmitted(true);
-      alert("Assessment record synced with Registrar.");
     } catch (error) {
       alert("Error submitting results.");
     }
@@ -165,7 +165,7 @@ export const StudentQuiz: React.FC = () => {
           <Icon name="verified" className="text-4xl" />
         </div>
         <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Quiz Complete</h1>
-        <p className="text-slate-500 mb-8">Synchronized results have been transmitted to teacher records.</p>
+        <p className="text-slate-500 mb-8">Here's how you did.</p>
         <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-8 rounded-2xl w-full max-w-sm mb-8">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Final Score</p>
             <p className="text-5xl font-black text-slate-900 dark:text-white">{score} <span className="text-xl text-slate-400">pts</span></p>

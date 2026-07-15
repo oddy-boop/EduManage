@@ -45,7 +45,7 @@ export const AdminDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({
         const monthlyData = months.map(m => ({ name: m, amount: 0 }));
         
         data.forEach(f => {
-            const date = f.updatedAt?.toDate ? f.updatedAt.toDate() : (f.createdAt?.toDate ? f.createdAt.toDate() : new Date());
+            const date = f.updatedAt ? new Date(f.updatedAt) : (f.createdAt ? new Date(f.createdAt) : new Date());
             if (date.getFullYear() === currentYear) {
                 monthlyData[date.getMonth()].amount += (parseFloat(f.amountPaid) || 0);
             }
@@ -66,11 +66,11 @@ export const AdminDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({
     const unsubDist = firestoreService.getDistribution(setDistribution);
     const unsubStudents = firestoreService.getStudents((data) => {
       setAllStudents(data);
-      const sorted = [...data].sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 4);
+      const sorted = [...data].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 4);
       setRecentActivities(sorted.map(s => ({
         name: s.name,
         action: 'Registered as new student',
-        date: s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString() : 'Today',
+        date: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'Today',
         status: 'Active',
         statusColor: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
         img: `https://picsum.photos/seed/${s.id}/100`
@@ -81,10 +81,10 @@ export const AdminDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({
     const unsubTeachers = firestoreService.getTeachers((teachers) => {
         setRecentActivities(prev => {
             const existingStudents = prev.filter(a => a.type === 'Student');
-            const newTeachers = teachers.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 2).map(t => ({
+            const newTeachers = teachers.sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 2).map(t => ({
                 name: t.name,
                 action: 'Joined as Instructor',
-                date: t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString() : 'New',
+                date: t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'New',
                 status: 'Active',
                 type: 'Teacher',
                 statusColor: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',

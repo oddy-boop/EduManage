@@ -134,7 +134,7 @@ export const AdminLayout: React.FC<LayoutProps> = ({ children, onNavigate, curre
         <nav className="flex-1 px-4 flex flex-col gap-2 overflow-y-auto">
           <NavItem icon="dashboard" label="Dashboard" active={currentView === View.ADMIN_DASHBOARD} onClick={() => { onNavigate(View.ADMIN_DASHBOARD); setIsSidebarOpen(false); }} />
           <NavItem icon="person_add" label="Registration" active={currentView === View.ADMIN_REGISTRATION} onClick={() => { onNavigate(View.ADMIN_REGISTRATION); setIsSidebarOpen(false); }} />
-          <NavItem icon="payments" label="School Fees" active={currentView === View.ADMIN_FEES || currentView === View.ADMIN_FEE_CONFIG} onClick={() => { onNavigate(View.ADMIN_FEES); setIsSidebarOpen(false); }} />
+          <NavItem icon="payments" label="School Fees" active={currentView === View.ADMIN_FEES} onClick={() => { onNavigate(View.ADMIN_FEES); setIsSidebarOpen(false); }} />
           <NavItem icon="calendar_month" label="Academic Calendar" active={currentView === View.ADMIN_CALENDAR} onClick={() => { onNavigate(View.ADMIN_CALENDAR); setIsSidebarOpen(false); }} />
           <NavItem icon="fact_check" label="Report Approvals" active={currentView === View.ADMIN_APPROVALS} onClick={() => { onNavigate(View.ADMIN_APPROVALS); setIsSidebarOpen(false); }} />
           <NavItem icon="campaign" label="Announcements" active={currentView === View.ADMIN_ANNOUNCEMENTS} onClick={() => { onNavigate(View.ADMIN_ANNOUNCEMENTS); setIsSidebarOpen(false); }} />

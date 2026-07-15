@@ -244,7 +244,7 @@ export const ParentFees: React.FC = () => {
                     </div>
                     <div>
                       <p className="font-bold text-sm text-slate-900 dark:text-white uppercase">TRX-{fee.id.slice(0, 8)}</p>
-                      <p className="text-xs text-slate-500">Paid via Card • {fee.createdAt?.toDate ? fee.createdAt.toDate().toLocaleDateString() : 'Recently'}</p>
+                      <p className="text-xs text-slate-500">Recorded by school office • {fee.createdAt ? new Date(fee.createdAt).toLocaleDateString() : 'Recently'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -260,80 +260,33 @@ export const ParentFees: React.FC = () => {
           </section>
         </div>
 
-        {/* Right Column: Payment Widget */}
+        {/* Right Column: Balance Summary */}
         <div className="space-y-6">
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-            <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-6">Payment Summary</h3>
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-6">Balance Summary</h3>
             <div className="space-y-3 pb-6 border-b border-dashed border-slate-200 dark:border-slate-700">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="font-medium text-slate-900 dark:text-white">GH₵{outstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <span className="text-slate-500">Total Fees ({selectedTerm})</span>
+                <span className="font-medium text-slate-900 dark:text-white">GH₵{totalFees.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Late Fee</span>
-                <span className="font-medium text-green-600">GH₵0.00</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Taxes (VAT)</span>
-                <span className="font-medium text-slate-900 dark:text-white">GH₵0.00</span>
+                <span className="text-slate-500">Amount Paid</span>
+                <span className="font-medium text-green-600">GH₵{paidFees.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
               </div>
             </div>
             <div className="flex justify-between items-center py-4">
-              <span className="font-bold text-slate-900 dark:text-white">Total Payable</span>
+              <span className="font-bold text-slate-900 dark:text-white">Balance Due</span>
               <span className="text-2xl font-black text-primary">GH₵{outstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
             </div>
-            
-            <div className="space-y-4 mt-2">
-              <p className="text-xs font-bold uppercase text-slate-400 tracking-wider">Select Payment Method</p>
-              <div className="grid grid-cols-3 gap-2">
-                <button className="flex flex-col items-center justify-center p-3 border-2 border-primary bg-primary/5 rounded-lg text-primary">
-                  <Icon name="credit_card" className="mb-1" />
-                  <span className="text-[10px] font-bold">Card</span>
-                </button>
-                <button className="flex flex-col items-center justify-center p-3 border border-slate-200 dark:border-slate-700 hover:border-slate-300 rounded-lg text-slate-500">
-                  <Icon name="account_balance" className="mb-1" />
-                  <span className="text-[10px] font-bold">Bank</span>
-                </button>
-                <button className="flex flex-col items-center justify-center p-3 border border-slate-200 dark:border-slate-700 hover:border-slate-300 rounded-lg text-slate-500">
-                  <Icon name="qr_code" className="mb-1" />
-                  <span className="text-[10px] font-bold">UPI</span>
-                </button>
-              </div>
-              <button 
-                onClick={async () => {
-                  if (currentTermFees.length > 0) {
-                    const pendingFee = currentTermFees.find(f => f.status !== 'paid');
-                    if (pendingFee) {
-                      try {
-                        await firestoreService.updateFee(pendingFee.id, {
-                          status: 'paid',
-                          amountPaid: parseFloat(pendingFee.amount || pendingFee.totalAmount),
-                          paidAt: new Date().toISOString()
-                        });
-                        alert('Payment processed successfully!');
-                      } catch (err) {
-                        console.error(err);
-                        alert('Payment failed. Please try again.');
-                      }
-                    } else {
-                      alert('All fees for this term are already paid!');
-                    }
-                  }
-                }}
-                className="w-full py-3 bg-primary text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-              >
-                Proceed to Pay <Icon name="arrow_forward" />
-              </button>
-              <div className="flex items-center justify-center gap-1 text-[10px] text-slate-400">
-                <Icon name="lock" className="text-xs" />
-                SECURE SSL ENCRYPTED PAYMENT
-              </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Fees are collected and recorded by the school's finance office. This statement reflects the official ledger; it does not process payments online. Please make payments in person or through the school's approved payment channels, then allow the office time to update your balance here.
             </div>
           </div>
 
           <div className="bg-slate-100 dark:bg-slate-800/50 p-4 rounded-xl">
             <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-1">Need help?</h4>
-            <p className="text-xs text-slate-550 leading-relaxed mb-3">If you find any discrepancy in the fee structure or have issues with the payment, please contact the finance office.</p>
+            <p className="text-xs text-slate-550 leading-relaxed mb-3">If you find any discrepancy in the fee structure or have questions about your balance, please contact the finance office.</p>
             <a href="mailto:finance@edumanage.com" className="text-xs font-bold text-primary flex items-center gap-1">
               <Icon name="mail" className="text-sm" /> finance@edumanage.com
             </a>
