@@ -5,15 +5,18 @@ import { useAuth } from '../../lib/AuthContext';
 
 export const AdminRegistration: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'roster'>('student');
+  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'parent' | 'roster'>('student');
   const [generatedId, setGeneratedId] = useState<string | null>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
   const [allStudents, setAllStudents] = useState<any[]>([]);
+  const [allParents, setAllParents] = useState<any[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [rosterSearch, setRosterSearch] = useState('');
+  const [parentSearch, setParentSearch] = useState('');
   const [memberExtraInfo, setMemberExtraInfo] = useState<{
     attendance?: any;
     fees?: any[];
@@ -22,7 +25,7 @@ export const AdminRegistration: React.FC = () => {
 
   const [availableGrades, setAvailableGrades] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  
+
   // Student Form State
   const [studentForm, setStudentForm] = useState({
     name: '',
@@ -30,7 +33,7 @@ export const AdminRegistration: React.FC = () => {
     parentName: '',
     parentContact: '',
     classId: '',
-    parentId: 'temp-parent-id'
+    parentId: ''
   });
 
   // Teacher Form State
@@ -43,33 +46,50 @@ export const AdminRegistration: React.FC = () => {
     assignedCourses: [] as string[]
   });
 
+  // Parent Form State
+  const [parentForm, setParentForm] = useState({
+    name: '',
+    email: '',
+    contact: ''
+  });
+
   useEffect(() => {
     // Helper to extract a sortable time value
     const getTime = (m: any) => {
-        if (m.createdAt?.toMillis) return m.createdAt.toMillis();
-        if (m.createdAt?.seconds) return m.createdAt.seconds * 1000;
-        return Date.now(); // Fallback for optimistic updates
+        if (m.createdAt) {
+          const parsed = new Date(m.createdAt).getTime();
+          if (!Number.isNaN(parsed)) return parsed;
+        }
+        return Date.now(); // Fallback for optimistic updates without a timestamp yet
     };
 
     const unsubStudents = firestoreService.getStudents((data) => {
         setAllStudents(data);
         setRecentMembers(prev => {
-            const teacherOnly = prev.filter(m => m.type === 'Teacher');
+            const rest = prev.filter(m => m.type !== 'Student');
             const newStudents = data.map(s => ({ ...s, type: 'Student' }));
-            return [...teacherOnly, ...newStudents].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
+            return [...rest, ...newStudents].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
         });
     });
 
     const unsubTeachers = firestoreService.getTeachers((data) => {
         setRecentMembers(prev => {
-            const studentOnly = prev.filter(m => m.type === 'Student');
-            const newTeachers = data.map(t => ({ ...t, type: 'Teacher' }));
-            return [...studentOnly, ...newTeachers].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
+            const rest = prev.filter(m => m.type !== 'Teacher');
+            const newTeachers = data.map(t => ({ ...t, id: t.uid, type: 'Teacher' }));
+            return [...rest, ...newTeachers].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
         });
     });
 
     const unsubGrades = firestoreService.getGrades((data) => setAvailableGrades(data));
     const unsubCourses = firestoreService.getCourses((data) => setAvailableCourses(data));
+    const unsubParents = firestoreService.getParents((data) => {
+        setAllParents(data);
+        setRecentMembers(prev => {
+            const rest = prev.filter(m => m.type !== 'Parent');
+            const newParents = data.map(p => ({ ...p, id: p.uid, type: 'Parent' }));
+            return [...rest, ...newParents].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
+        });
+    });
 
     setLoadingMembers(false);
     return () => {
@@ -77,6 +97,7 @@ export const AdminRegistration: React.FC = () => {
         unsubTeachers();
         unsubGrades();
         unsubCourses();
+        unsubParents();
     }
   }, []);
 
@@ -118,6 +139,11 @@ export const AdminRegistration: React.FC = () => {
   }, [selectedMember]);
 
   const handleRegister = async () => {
+      if (activeTab === 'student' && !studentForm.parentId) {
+        alert("Please select a Parent/Guardian for this student. If they aren't registered yet, use the Parent Registration tab first.");
+        return;
+      }
+
       setIsSubmitting(true);
       try {
         if (editingId) {
@@ -136,7 +162,7 @@ export const AdminRegistration: React.FC = () => {
                     type: 'registration'
                   });
                 }
-            } else {
+            } else if (activeTab === 'teacher') {
                 await firestoreService.updateUser(editingId, {
                     ...teacherForm
                 });
@@ -147,6 +173,21 @@ export const AdminRegistration: React.FC = () => {
                     userName: user.name || '',
                     action: 'Teacher Profile Update',
                     details: `Updated teacher profile for ${teacherForm.name} (Email: ${teacherForm.email})`,
+                    type: 'registration'
+                  });
+                }
+            } else {
+                await firestoreService.updateUser(editingId, {
+                    name: parentForm.name,
+                    email: parentForm.email
+                });
+                if (user) {
+                  await firestoreService.logActivity({
+                    userId: user.uid,
+                    userEmail: user.email || '',
+                    userName: user.name || '',
+                    action: 'Parent Profile Update',
+                    details: `Updated parent profile for ${parentForm.name}`,
                     type: 'registration'
                   });
                 }
@@ -161,7 +202,7 @@ export const AdminRegistration: React.FC = () => {
             // Pre-calculate the Login ID using a fresh document ID to make it ATOMIC
             const studentId = firestoreService.generateId('students');
             newMemberId = `STU${new Date().getFullYear()}${studentId.slice(0, 4).toUpperCase()}`;
-            
+
             await firestoreService.registerStudentWithId(studentId, {
               ...studentForm,
               grade: studentForm.classId,
@@ -178,12 +219,12 @@ export const AdminRegistration: React.FC = () => {
                 type: 'registration'
               });
             }
-        } else {
-            // Same for teachers
+            setGeneratedPassword(null);
+        } else if (activeTab === 'teacher') {
             const teacherId = firestoreService.generateId('users');
             newMemberId = `T${Math.floor(100 + Math.random() * 900)}`;
-            
-            await firestoreService.registerTeacherWithId(teacherId, {
+
+            const created = await firestoreService.registerTeacherWithId(teacherId, {
               ...teacherForm,
               role: 'Teacher',
               loginId: newMemberId,
@@ -200,13 +241,35 @@ export const AdminRegistration: React.FC = () => {
                 type: 'registration'
               });
             }
+            setGeneratedPassword(created?.temporaryPassword || null);
+        } else {
+            const parentId = firestoreService.generateId('users');
+            newMemberId = `P${Math.floor(100 + Math.random() * 900)}`;
+
+            const created = await firestoreService.registerParentWithId(parentId, {
+              name: parentForm.name,
+              email: parentForm.email,
+              loginId: newMemberId
+            });
+
+            if (user) {
+              await firestoreService.logActivity({
+                userId: user.uid,
+                userEmail: user.email || '',
+                userName: user.name || '',
+                action: 'Parent Registration',
+                details: `Registered new parent ${parentForm.name} (Login ID: ${newMemberId})`,
+                type: 'registration'
+              });
+            }
+            setGeneratedPassword(created?.temporaryPassword || null);
         }
 
         setGeneratedId(newMemberId);
         resetForm();
       } catch (err) {
         console.error("Registration failed:", err);
-        alert("Registration failed. Please try again.");
+        alert(err instanceof Error ? err.message : "Registration failed. Please try again.");
       } finally {
         setIsSubmitting(false);
       }
@@ -219,7 +282,7 @@ export const AdminRegistration: React.FC = () => {
       parentName: '',
       parentContact: '',
       classId: '',
-      parentId: 'temp-parent-id'
+      parentId: ''
     });
     setTeacherForm({
       name: '',
@@ -229,10 +292,15 @@ export const AdminRegistration: React.FC = () => {
       assignedClasses: [],
       assignedCourses: []
     });
+    setParentForm({
+      name: '',
+      email: '',
+      contact: ''
+    });
   };
 
   const startEdit = (member: any) => {
-      setEditingId(member.id);
+      setEditingId(member.id || member.uid);
       if (member.type === 'Student') {
           setActiveTab('student');
           setStudentForm({
@@ -241,7 +309,14 @@ export const AdminRegistration: React.FC = () => {
               parentName: member.parentName || '',
               parentContact: member.parentContact || '',
               classId: member.classId || '',
-              parentId: member.parentId || 'temp-parent-id'
+              parentId: member.parentId || ''
+          });
+      } else if (member.type === 'Parent') {
+          setActiveTab('parent');
+          setParentForm({
+              name: member.name,
+              email: member.email || '',
+              contact: ''
           });
       } else {
           setActiveTab('teacher');
@@ -253,6 +328,29 @@ export const AdminRegistration: React.FC = () => {
               assignedClasses: member.assignedClasses || [],
               assignedCourses: member.assignedCourses || []
           });
+      }
+  };
+
+  const handleResetPassword = async (member: any) => {
+      const uid = member.id || member.uid;
+      if (!uid) return;
+      if (!window.confirm(`Generate a new temporary password for ${member.name}? Their current password will stop working immediately.`)) return;
+      try {
+        const result = await firestoreService.resetUserPassword(uid);
+        if (user) {
+          await firestoreService.logActivity({
+            userId: user.uid,
+            userEmail: user.email || '',
+            userName: user.name || '',
+            action: 'Password Reset',
+            details: `Reset password for ${member.name} (${member.type})`,
+            type: 'registration'
+          });
+        }
+        alert(`New temporary password for ${member.name}: ${result.temporaryPassword}\n\nShare this with them securely — it will not be shown again.`);
+      } catch (err) {
+        console.error("Failed to reset password:", err);
+        alert("Failed to reset password. Please try again.");
       }
   };
 
@@ -294,13 +392,19 @@ export const AdminRegistration: React.FC = () => {
              >
                  <Icon name="person_add" /> Student Registration
              </button>
-             <button 
+             <button
                onClick={() => { if(!editingId) setActiveTab('teacher'); }}
                className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'teacher' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
              >
                  <Icon name="co_present" /> Teacher Registration
              </button>
-             <button 
+             <button
+               onClick={() => { if(!editingId) setActiveTab('parent'); }}
+               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'parent' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
+             >
+                 <Icon name="family_restroom" /> Parent Registration
+             </button>
+             <button
                onClick={() => { if(!editingId) setActiveTab('roster'); }}
                className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
              >
@@ -320,13 +424,24 @@ export const AdminRegistration: React.FC = () => {
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                         Database records synced. Write down this generated Login Access ID:
                     </p>
-                    <div className="mt-3 flex items-center gap-2">
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
                        <code className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 rounded font-mono font-black text-sm">{generatedId}</code>
-                       <button onClick={() => { navigator.clipboard.writeText(generatedId); alert('Copied to clipboard!'); }} className="text-xs font-bold text-primary hover:underline">Copy</button>
+                       <button onClick={() => { navigator.clipboard.writeText(generatedId); alert('Login ID copied to clipboard!'); }} className="text-xs font-bold text-primary hover:underline">Copy ID</button>
+                       {generatedPassword && (
+                         <>
+                           <code className="px-3 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 rounded font-mono font-black text-sm">{generatedPassword}</code>
+                           <button onClick={() => { navigator.clipboard.writeText(generatedPassword); alert('Temporary password copied to clipboard!'); }} className="text-xs font-bold text-primary hover:underline">Copy Password</button>
+                         </>
+                       )}
                     </div>
+                    {generatedPassword && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-2 uppercase tracking-wide">
+                        This temporary password will not be shown again — share it securely now.
+                      </p>
+                    )}
                 </div>
             </div>
-            <button onClick={() => setGeneratedId(null)} className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
+            <button onClick={() => { setGeneratedId(null); setGeneratedPassword(null); }} className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
         </div>
       )}
 
@@ -351,9 +466,9 @@ export const AdminRegistration: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
-                      <input 
-                          type="text" 
-                          placeholder="e.g. John Doe" 
+                      <input
+                          type="text"
+                          placeholder="e.g. John Doe"
                           className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
                           value={studentForm.name}
                           onChange={(e) => setStudentForm({...studentForm, name: e.target.value})}
@@ -361,26 +476,49 @@ export const AdminRegistration: React.FC = () => {
                   </div>
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Age</label>
-                      <input 
-                          type="number" 
+                      <input
+                          type="number"
                           className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
                           value={studentForm.age}
                           onChange={(e) => setStudentForm({...studentForm, age: e.target.value})}
                       />
                   </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parent/Guardian</label>
-                      <input 
-                          type="text" 
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={studentForm.parentName}
-                          onChange={(e) => setStudentForm({...studentForm, parentName: e.target.value})}
-                      />
+                  <div className="md:col-span-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Parent / Guardian Account</label>
+                        <button
+                          type="button"
+                          onClick={() => { if (!editingId) setActiveTab('parent'); }}
+                          className="text-[10px] font-black text-primary uppercase hover:underline"
+                        >
+                          + Register New Parent
+                        </button>
+                      </div>
+                      <select
+                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                          value={studentForm.parentId}
+                          onChange={(e) => {
+                              const parent = allParents.find(p => p.uid === e.target.value);
+                              setStudentForm({
+                                ...studentForm,
+                                parentId: e.target.value,
+                                parentName: parent?.name || studentForm.parentName,
+                              });
+                          }}
+                      >
+                          <option value="">Select a registered parent...</option>
+                          {allParents.map(p => (
+                              <option key={p.uid} value={p.uid}>{p.name} ({p.loginId || 'no ID yet'})</option>
+                          ))}
+                      </select>
+                      {allParents.length === 0 && (
+                        <p className="text-[10px] text-amber-600 mt-1 italic">No parents registered yet. Use "Register New Parent" above first.</p>
+                      )}
                   </div>
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Guardian Contact / Phone</label>
-                      <input 
-                          type="text" 
+                      <input
+                          type="text"
                           className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
                           placeholder="e.g. +233 24 123 4567"
                           value={studentForm.parentContact}
@@ -389,7 +527,7 @@ export const AdminRegistration: React.FC = () => {
                   </div>
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Assigned Class / Grade</label>
-                      <select 
+                      <select
                           className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
                           value={studentForm.classId}
                           onChange={(e) => setStudentForm({...studentForm, classId: e.target.value})}
@@ -531,6 +669,69 @@ export const AdminRegistration: React.FC = () => {
           </div>
       )}
 
+      {activeTab === 'parent' && (
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+              {editingId && (
+                  <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/40 p-4 rounded-xl flex justify-between items-center">
+                      <div className="flex gap-3 items-center">
+                          <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
+                              <Icon name="edit" />
+                          </div>
+                          <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white">Editing Mode Active</p>
+                              <p className="text-xs text-slate-550">Updating parent profile for {parentForm.name}</p>
+                          </div>
+                      </div>
+                      <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600 transition-colors">Cancel Edit</button>
+                  </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parent / Guardian Name</label>
+                      <input
+                          type="text"
+                          placeholder="e.g. Mr. Kwame Nkrumah"
+                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                          value={parentForm.name}
+                          onChange={(e) => setParentForm({...parentForm, name: e.target.value})}
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
+                      <input
+                          type="email"
+                          placeholder="e.g. kwame@example.com"
+                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                          value={parentForm.email}
+                          onChange={(e) => setParentForm({...parentForm, email: e.target.value})}
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Contact</label>
+                      <input
+                          type="text"
+                          placeholder="e.g. +233 24 123 4567"
+                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                          value={parentForm.contact}
+                          onChange={(e) => setParentForm({...parentForm, contact: e.target.value})}
+                      />
+                  </div>
+              </div>
+              <p className="text-[10px] text-slate-450 italic">A login ID and temporary password will be generated once you register this parent — you can then attach their children under Student Registration.</p>
+              <div className="flex justify-end pt-4">
+                  <button
+                      onClick={handleRegister}
+                      disabled={isSubmitting || !parentForm.name}
+                      className="px-8 py-3 bg-primary text-white font-bold rounded-lg shadow-lg hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 text-sm"
+                  >
+                      {isSubmitting ? <Icon name="sync" className="animate-spin" /> : editingId ? <Icon name="save" /> : <Icon name="family_restroom" />}
+                      {isSubmitting ? 'Syncing...' : editingId ? 'Update Credentials' : 'Register Parent'}
+                  </button>
+              </div>
+          </div>
+      )}
+
       {/* Student Roster Tab */}
       {activeTab === 'roster' && (
           <div className="space-y-6 max-w-6xl mx-auto">
@@ -665,13 +866,21 @@ export const AdminRegistration: React.FC = () => {
                         {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : 'Just now'}
                       </td>
                       <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
-                         <button 
+                         {member.type !== 'Student' && (
+                           <button
+                             onClick={() => handleResetPassword(member)}
+                             className="text-[10px] font-black text-slate-400 uppercase hover:text-amber-600 transition-colors flex items-center gap-1"
+                           >
+                             <Icon name="key" className="text-sm" /> Reset Password
+                           </button>
+                         )}
+                         <button
                            onClick={() => startEdit(member)}
                            className="text-[10px] font-black text-slate-400 uppercase hover:text-primary transition-colors flex items-center gap-1"
                          >
                            <Icon name="edit" className="text-sm" /> Edit
                          </button>
-                         <button 
+                         <button
                            onClick={() => setSelectedMember(member)}
                            className="text-[10px] font-black text-primary uppercase hover:underline"
                          >

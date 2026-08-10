@@ -3,25 +3,40 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '../../components/Icon';
 import { View } from '../../types';
 import { firestoreService } from '../../lib/services';
+import { useAuth } from '../../lib/AuthContext';
 
 interface TeacherQuizShareProps {
   onNavigate: (view: View) => void;
 }
 
 export const TeacherQuizShare: React.FC<TeacherQuizShareProps> = ({ onNavigate }) => {
+  const { user } = useAuth();
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    // Logic to fetch all quizzes created by this teacher
-    const unsub = firestoreService.onQuizzesChange((data) => {
+    if (!user?.uid) {
+      setLoading(false);
+      return;
+    }
+    const unsub = firestoreService.onTeacherQuizzesChange(user.uid, (data) => {
       setQuizzes(data);
-      if (data.length > 0) setSelectedQuiz(data[0]);
+      setSelectedQuiz(prev => prev ? (data.find((q: any) => q.id === prev.id) || data[0] || null) : (data[0] || null));
       setLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [user?.uid]);
+
+  const shareUrl = selectedQuiz ? `${window.location.origin}/join-quiz/${selectedQuiz.id}` : '';
+
+  const handleCopyLink = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (loading) {
     return (
@@ -65,7 +80,7 @@ export const TeacherQuizShare: React.FC<TeacherQuizShareProps> = ({ onNavigate }
                         </div>
                         <div className="text-left">
                           <p className="font-bold text-slate-900 dark:text-white">{q.title}</p>
-                          <p className="text-xs text-slate-400">{q.questions?.length || 0} Questions • Grade {q.gradeLevel}</p>
+                          <p className="text-xs text-slate-400">{q.questions?.length || 0} Questions • {q.isPublished ? 'Published' : 'Draft'}</p>
                         </div>
                       </div>
                       {selectedQuiz?.id === q.id && <Icon name="check_circle" className="text-primary text-2xl" />}
@@ -81,19 +96,22 @@ export const TeacherQuizShare: React.FC<TeacherQuizShareProps> = ({ onNavigate }
                           <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Step 2: External Access Link</span>
                       </div>
                       <div className="flex gap-3">
-                          <div className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-6 py-4 text-sm font-mono text-slate-500 flex items-center gap-3">
-                              <Icon name="lock" className="text-xs" />
-                              <span>https://edumanage.edu/join-quiz/{selectedQuiz.id}</span>
+                          <div className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl px-6 py-4 text-sm font-mono text-slate-500 flex items-center gap-3 overflow-x-auto">
+                              <Icon name="lock" className="text-xs shrink-0" />
+                              <span className="whitespace-nowrap">{shareUrl}</span>
                           </div>
-                          <button className="px-8 bg-slate-900 text-white font-bold rounded-2xl hover:scale-105 transition-all text-sm flex items-center gap-2">
-                              <Icon name="content_copy" className="text-lg" /> Copy
+                          <button
+                            onClick={handleCopyLink}
+                            className="px-8 bg-slate-900 text-white font-bold rounded-2xl hover:scale-105 transition-all text-sm flex items-center gap-2 shrink-0"
+                          >
+                              <Icon name={copied ? 'check' : 'content_copy'} className="text-lg" /> {copied ? 'Copied!' : 'Copy'}
                           </button>
                       </div>
                   </div>
 
                   <div className="flex items-start gap-10">
                     <div className="bg-white p-4 rounded-3xl border-2 border-slate-100 shadow-xl">
-                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://edumanage.edu/join-quiz/${selectedQuiz.id}`} alt="QR" className="size-32" />
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}`} alt="QR" className="size-32" />
                     </div>
                     <div className="space-y-4 pt-4">
                       <h4 className="font-bold text-slate-900 dark:text-white">Classroom Integration</h4>
@@ -138,7 +156,7 @@ export const TeacherQuizShare: React.FC<TeacherQuizShareProps> = ({ onNavigate }
                                 </div>
                                 <div className="text-left">
                                     <p className="text-xs font-bold text-slate-900 dark:text-white">{item.title}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Grade {item.gradeLevel}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{item.isPublished ? 'Published' : 'Draft'}</p>
                                 </div>
                             </div>
                             <Icon name="arrow_forward_ios" className="text-[10px] text-slate-300" />

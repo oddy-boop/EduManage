@@ -117,6 +117,14 @@ export const firestoreService = {
     return mockOnSnapshot('/api/students', callback);
   },
 
+  async deleteStudent(studentId: string) {
+    const response = await apiFetch(`/api/students/${encodeURIComponent(studentId)}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Failed to delete student');
+    return await response.json();
+  },
+
   getGrades(callback: (data: any[]) => void) {
     return mockOnSnapshot('/api/grades', callback);
   },
@@ -212,9 +220,111 @@ export const firestoreService = {
     return await response.json();
   },
 
+  // --- ASSESSMENT BOOK ---
+  getAssessments(params: { classId?: string; studentId?: string; term?: string }, callback: (data: any[]) => void) {
+    const query = new URLSearchParams();
+    if (params.classId) query.set('classId', params.classId);
+    if (params.studentId) query.set('studentId', params.studentId);
+    if (params.term) query.set('term', params.term);
+    const qs = query.toString();
+    return mockOnSnapshot(`/api/assessments${qs ? `?${qs}` : ''}`, callback);
+  },
+
+  async getAssessmentSummary(studentId: string, classId: string, term: string, caMax?: number) {
+    const query = new URLSearchParams({ studentId, classId, term });
+    if (caMax !== undefined) query.set('caMax', String(caMax));
+    const response = await apiFetch(`/api/assessments/summary?${query.toString()}`);
+    if (!response.ok) throw new Error('Failed to fetch assessment summary');
+    return await response.json();
+  },
+
+  async createAssessment(data: { studentId: string; classId: string; term: string; subject?: string; category: string; title?: string; score: number; maxScore?: number; date?: string }) {
+    const response = await apiFetch('/api/assessments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to create assessment entry');
+    return await response.json();
+  },
+
+  async deleteAssessment(id: string) {
+    const response = await apiFetch(`/api/assessments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete assessment entry');
+    return await response.json();
+  },
+
+  // --- SUBJECT REPORTS (Class Teacher merge workflow) ---
+  getSubjectReports(params: { classId: string; term: string; subject?: string; studentId?: string }, callback: (data: any[]) => void) {
+    const query = new URLSearchParams({ classId: params.classId, term: params.term });
+    if (params.subject) query.set('subject', params.subject);
+    if (params.studentId) query.set('studentId', params.studentId);
+    return mockOnSnapshot(`/api/subjectReports?${query.toString()}`, callback);
+  },
+
+  async saveSubjectReport(data: { studentId: string; classId: string; term: string; subject: string; caScore: number; examScore: number; remarks?: string }) {
+    const response = await apiFetch('/api/subjectReports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Failed to save subject report');
+    return body;
+  },
+
+  async submitSubjectReports(classId: string, subject: string, term: string) {
+    const response = await apiFetch('/api/subjectReports/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classId, subject, term })
+    });
+    if (!response.ok) throw new Error('Failed to submit subject reports');
+    return await response.json();
+  },
+
+  async getSubjectMergeStatus(classId: string, term: string) {
+    const response = await apiFetch(`/api/subjectReports/merge-status?classId=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}`);
+    if (!response.ok) throw new Error('Failed to fetch merge status');
+    return await response.json();
+  },
+
+  getMergedSubjectReports(classId: string, term: string, callback: (data: any[]) => void) {
+    return mockOnSnapshot(`/api/subjectReports/merged?classId=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}`, callback);
+  },
+
+  async finalizeClassReports(classId: string, term: string, remarks: Record<string, string>) {
+    const response = await apiFetch('/api/reports/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classId, term, remarks })
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Failed to finalize class reports');
+    return body;
+  },
+
   // --- SCHEDULE ---
   getClassSchedule(classId: string, callback: (data: any[]) => void) {
     return mockOnSnapshot(`/api/schedules?classId=${encodeURIComponent(classId)}`, callback);
+  },
+
+  async saveSchedule(data: { classId: string; day: string; subjects: any[] }) {
+    const response = await apiFetch('/api/schedules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to save schedule');
+    return await response.json();
+  },
+
+  async deleteSchedule(scheduleId: string) {
+    const response = await apiFetch(`/api/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Failed to delete schedule');
+    return await response.json();
   },
 
   // --- ASSIGNMENTS ---
@@ -229,6 +339,16 @@ export const firestoreService = {
       body: JSON.stringify(assignmentData)
     });
     if (!response.ok) throw new Error('Failed to create assignment');
+    return await response.json();
+  },
+
+  async updateAssignment(assignmentId: string, data: any) {
+    const response = await apiFetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to update assignment');
     return await response.json();
   },
 
@@ -262,6 +382,29 @@ export const firestoreService = {
 
   getTeachers(callback: (data: any[]) => void) {
     return mockOnSnapshot('/api/users?role=Teacher', callback);
+  },
+
+  // --- PARENTS ---
+  async registerParentWithId(parentId: string, parentData: any) {
+    const response = await apiFetch(`/api/users/${encodeURIComponent(parentId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...parentData, role: 'Parent' })
+    });
+    if (!response.ok) throw new Error('Failed to register parent with ID');
+    return await response.json();
+  },
+
+  getParents(callback: (data: any[]) => void) {
+    return mockOnSnapshot('/api/users?role=Parent', callback);
+  },
+
+  async resetUserPassword(uid: string) {
+    const response = await apiFetch(`/api/users/${encodeURIComponent(uid)}/reset-password`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Failed to reset password');
+    return await response.json();
   },
 
   // --- FEES ---
@@ -302,8 +445,46 @@ export const firestoreService = {
     return this.saveQuiz(quizData);
   },
 
+  async updateQuiz(quizId: string, data: any) {
+    const response = await apiFetch(`/api/quizzes/${encodeURIComponent(quizId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Failed to update quiz');
+    return await response.json();
+  },
+
+  async deleteQuiz(quizId: string) {
+    const response = await apiFetch(`/api/quizzes/${encodeURIComponent(quizId)}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) throw new Error('Failed to delete quiz');
+    return await response.json();
+  },
+
   onQuizzesChange(callback: (data: any[]) => void) {
     return mockOnSnapshot('/api/quizzes', callback);
+  },
+
+  onTeacherQuizzesChange(teacherId: string, callback: (data: any[]) => void) {
+    return mockOnSnapshot(`/api/quizzes?teacherId=${encodeURIComponent(teacherId)}`, callback);
+  },
+
+  // --- QUIZ RESULTS ---
+  async submitQuizResult(data: { quizId: string; studentId: string; studentName?: string; answers: Record<string, string> }) {
+    const response = await fetch('/api/quizResults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Failed to submit quiz result');
+    return body;
+  },
+
+  getQuizResults(quizId: string, callback: (data: any[]) => void) {
+    return mockOnSnapshot(`/api/quizResults?quizId=${encodeURIComponent(quizId)}`, callback);
   },
 
   // --- EVENTS ---

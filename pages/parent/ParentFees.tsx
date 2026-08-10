@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { exportToCSV } from '../../lib/exportUtils';
 
 interface GradeConfig {
   id: string;
@@ -233,11 +234,10 @@ export const ParentFees: React.FC = () => {
           <section className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
               <h3 className="font-bold text-lg text-slate-900 dark:text-white">Transaction History</h3>
-              <a href="#" className="text-sm font-bold text-primary hover:underline">View All</a>
             </div>
             <div className="p-2">
               {currentTermFees.filter(f => f.status === 'paid').map((fee) => (
-                <div key={fee.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 rounded-lg transition-colors cursor-pointer">
+                <div key={fee.id} className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 rounded-lg transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="size-10 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 flex items-center justify-center">
                       <Icon name="credit_card" />
@@ -249,7 +249,18 @@ export const ParentFees: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="font-bold text-slate-900 dark:text-white">GH₵{parseFloat(fee.amount || fee.totalAmount).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                    <Icon name="download" className="text-slate-400 hover:text-primary" />
+                    <button
+                      onClick={() => exportToCSV([{
+                        Transaction: `TRX-${fee.id.slice(0, 8)}`,
+                        Type: fee.type,
+                        Amount: fee.amountPaid,
+                        Status: fee.status,
+                        Date: fee.createdAt ? new Date(fee.createdAt).toLocaleDateString() : ''
+                      }], `TRX-${fee.id.slice(0, 8)}.csv`)}
+                      title="Download receipt"
+                    >
+                      <Icon name="download" className="text-slate-400 hover:text-primary" />
+                    </button>
                   </div>
                 </div>
               ))}

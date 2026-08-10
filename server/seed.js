@@ -2,6 +2,7 @@ import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 // Load .env from server directory
 dotenv.config();
@@ -41,15 +42,16 @@ async function seed() {
 
     console.log('Inserting seed records...');
 
-    // Seed default admin
+    // Seed default admin (password hashed with bcrypt, matching server.js's login verification)
+    const adminHash = await bcrypt.hash('admin123', 10);
     await pool.query('INSERT INTO users (uid, email, name, role, password) VALUES ($1, $2, $3, $4, $5)', [
       'admin-uid',
       'admin@school.edu',
       'Administrator',
       'Admin',
-      'admin123'
+      adminHash
     ]);
-    
+
     // Seed Grade Configs
     await pool.query(`
       INSERT INTO grade_configs (id, name, base_fee) VALUES
@@ -77,13 +79,15 @@ async function seed() {
     `);
 
     // Seed Users (Teachers & Parents)
+    const teacherHash = await bcrypt.hash('teacher123', 10);
+    const parentHash = await bcrypt.hash('parent123', 10);
     await pool.query(`
       INSERT INTO users (uid, email, name, role, password, login_id, qualification, assigned_classes, assigned_courses) VALUES
-      ('teacher-1-uid', 'teacher1@school.edu', 'Mr. Albert Mensah', 'Teacher', 'teacher123', 'T100', 'B.Ed Mathematics', '["Grade 10", "Grade 2"]'::jsonb, '["MATH101", "SCI101"]'::jsonb),
-      ('teacher-2-uid', 'teacher2@school.edu', 'Mrs. Emily Taylor', 'Teacher', 'teacher123', 'T101', 'M.A English', '["Grade 10"]'::jsonb, '["ENG101"]'::jsonb),
-      ('parent-1-uid', 'parent1@school.edu', 'Mr. Kwame Nkrumah', 'Parent', 'parent123', 'P100', NULL, '[]'::jsonb, '[]'::jsonb),
-      ('parent-2-uid', 'parent2@school.edu', 'Mrs. Fatima Bello', 'Parent', 'parent123', 'P101', NULL, '[]'::jsonb, '[]'::jsonb);
-    `);
+      ('teacher-1-uid', 'teacher1@school.edu', 'Mr. Albert Mensah', 'Teacher', $1, 'T100', 'B.Ed Mathematics', '["Grade 10", "Grade 2"]'::jsonb, '["MATH101", "SCI101"]'::jsonb),
+      ('teacher-2-uid', 'teacher2@school.edu', 'Mrs. Emily Taylor', 'Teacher', $1, 'T101', 'M.A English', '["Grade 10"]'::jsonb, '["ENG101"]'::jsonb),
+      ('parent-1-uid', 'parent1@school.edu', 'Mr. Kwame Nkrumah', 'Parent', $2, 'P100', NULL, '[]'::jsonb, '[]'::jsonb),
+      ('parent-2-uid', 'parent2@school.edu', 'Mrs. Fatima Bello', 'Parent', $2, 'P101', NULL, '[]'::jsonb, '[]'::jsonb);
+    `, [teacherHash, parentHash]);
 
     // Seed Students
     await pool.query(`
@@ -129,7 +133,11 @@ async function seed() {
     // Seed Quizzes
     await pool.query(`
       INSERT INTO quizzes (id, teacher_id, title, description, questions, is_published) VALUES
-      ('quiz-1-id', 'teacher-1-uid', 'Introductory Algebraic Equations', 'Quick algebra warm-up quiz', '[{"question":"Solve for x: 2x + 4 = 10","options":["2","3","4","5"],"answer":"3"}]'::jsonb, TRUE);
+      ('quiz-1-id', 'teacher-1-uid', 'Introductory Algebraic Equations', 'Quick algebra warm-up quiz',
+       '[
+          {"id":"q1","text":"Solve for x: 2x + 4 = 10","type":"Multiple Choice","options":["2","3","4","5"],"correctAnswer":"3","points":1},
+          {"id":"q2","text":"Solve for x: 3x - 6 = 9","type":"Multiple Choice","options":["3","4","5","6"],"correctAnswer":"5","points":1}
+        ]'::jsonb, TRUE);
     `);
 
     // Seed Reports

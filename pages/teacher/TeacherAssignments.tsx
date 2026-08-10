@@ -5,25 +5,34 @@ import { firestoreService } from '../../lib/services';
 
 export const TeacherAssignments: React.FC = () => {
   const { user } = useAuth();
+  const assignedClasses = user?.assignedClasses && user.assignedClasses.length > 0 ? user.assignedClasses : ['Unassigned'];
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    classId: '10-A',
-    dueDate: '',
-    subject: 'History'
+    classId: assignedClasses[0],
+    dueDate: ''
   });
 
   useEffect(() => {
-    // For simplicity, we fetch assignments for the default class or we could fetch all by teacherId
-    // Let's fetch the list of assignments created by this teacher
-    // We don't have a getAssignmentsByTeacherId so we use classId for now as in the dashboard mockup
-    const unsub = firestoreService.getAssignments('10-A', (data) => {
-      setAssignments(data);
-    });
-    return () => unsub();
-  }, []);
+    // Assignments are stored per-class; aggregate across every class this teacher is assigned to.
+    const unsubs = assignedClasses.map(classId =>
+      firestoreService.getAssignments(classId, (data) => {
+        setAssignments(prev => {
+          const rest = prev.filter(a => a.classId !== classId);
+          return [...rest, ...data].sort((a, b) => (a.dueDate < b.dueDate ? 1 : -1));
+        });
+      })
+    );
+    return () => unsubs.forEach(unsub => unsub());
+  }, [JSON.stringify(assignedClasses)]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({ title: '', description: '', classId: assignedClasses[0], dueDate: '' });
+  };
 
   const handlePublish = async () => {
     if (!formData.title || !formData.dueDate) {
@@ -33,20 +42,19 @@ export const TeacherAssignments: React.FC = () => {
 
     try {
       setLoading(true);
-      await firestoreService.createAssignment({
-        ...formData,
-        teacherId: user?.uid || 'anonymous',
-        status: 'published',
-        createdAt: new Date().toISOString()
-      });
-      alert("Assignment published successfully!");
-      setFormData({
-        title: '',
-        description: '',
-        classId: '10-A',
-        dueDate: '',
-        subject: 'History'
-      });
+      if (editingId) {
+        await firestoreService.updateAssignment(editingId, formData);
+        alert("Assignment updated successfully!");
+      } else {
+        await firestoreService.createAssignment({
+          ...formData,
+          teacherId: user?.uid || 'anonymous',
+          status: 'published',
+          createdAt: new Date().toISOString()
+        });
+        alert("Assignment published successfully!");
+      }
+      resetForm();
     } catch (error) {
       console.error("Failed to publish:", error);
       alert("Failed to publish assignment.");
@@ -55,10 +63,21 @@ export const TeacherAssignments: React.FC = () => {
     }
   };
 
+  const handleEdit = (asgn: any) => {
+    setEditingId(asgn.id);
+    setFormData({
+      title: asgn.title,
+      description: asgn.description || '',
+      classId: asgn.classId,
+      dueDate: asgn.dueDate ? new Date(asgn.dueDate).toISOString().split('T')[0] : ''
+    });
+  };
+
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this assignment?")) return;
     try {
       await firestoreService.deleteAssignment(id);
+      if (editingId === id) resetForm();
     } catch (error) {
       alert("Failed to delete assignment.");
     }
@@ -79,7 +98,7 @@ export const TeacherAssignments: React.FC = () => {
         
         <div className="flex items-center gap-3">
            <div className="size-8 rounded-full bg-slate-200 overflow-hidden border border-slate-200">
-              <img src={user?.photoURL || 'https://picsum.photos/seed/teacher/200'} alt="" />
+              <img src={user?.avatar || 'https://picsum.photos/seed/teacher/200'} alt="" />
            </div>
         </div>
       </div>
@@ -102,14 +121,19 @@ export const TeacherAssignments: React.FC = () => {
              {/* Left Column: Form */}
              <div className="lg:col-span-2 space-y-8">
                   <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-6">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                          <Icon name="add" />
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                            <Icon name={editingId ? 'edit' : 'add'} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-900 dark:text-white">{editingId ? 'Edit Assignment' : 'Create New Assignment'}</h3>
+                            <p className="text-xs text-slate-500">Fill in the details to publish to students</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-slate-900 dark:text-white">Create New Assignment</h3>
-                          <p className="text-xs text-slate-500">Fill in the details to publish to students</p>
-                        </div>
+                        {editingId && (
+                          <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600">Cancel Edit</button>
+                        )}
                       </div>
 
                       <div>
@@ -150,14 +174,17 @@ export const TeacherAssignments: React.FC = () => {
                                   </div>
                                   <div>
                                       <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{asgn.title}</p>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Due {asgn.dueDate} • Class {asgn.classId}</p>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Due {asgn.dueDate ? new Date(asgn.dueDate).toLocaleDateString() : 'N/A'} • Class {asgn.classId}</p>
                                   </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                  <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+                                  <button
+                                    onClick={() => handleEdit(asgn)}
+                                    className="p-2 text-slate-400 hover:text-primary transition-colors"
+                                  >
                                       <Icon name="edit" className="text-base" />
                                   </button>
-                                  <button 
+                                  <button
                                     onClick={() => handleDelete(asgn.id)}
                                     className="p-2 text-slate-400 hover:text-rose-600 transition-colors"
                                   >
@@ -182,14 +209,14 @@ export const TeacherAssignments: React.FC = () => {
                       <div className="space-y-4">
                           <div>
                               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 text-[10px]">TARGET CLASS</label>
-                              <select 
+                              <select
                                 value={formData.classId}
                                 onChange={(e) => setFormData(prev => ({ ...prev, classId: e.target.value }))}
                                 className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold"
                               >
-                                  <option value="10-A">History - 10A</option>
-                                  <option value="10-B">History - 10B</option>
-                                  <option value="11-C">History - 11C</option>
+                                  {assignedClasses.map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
                               </select>
                           </div>
                           
@@ -203,12 +230,13 @@ export const TeacherAssignments: React.FC = () => {
                               />
                           </div>
 
-                          <button 
+                          <button
                             onClick={handlePublish}
                             disabled={loading}
                             className="w-full py-3 bg-primary text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
                           >
-                              {loading ? 'Publishing...' : 'Publish Assignment'} <Icon name={loading ? 'sync' : 'send'} className={`text-sm ${loading ? 'animate-spin' : ''}`} />
+                              {loading ? (editingId ? 'Saving...' : 'Publishing...') : (editingId ? 'Save Changes' : 'Publish Assignment')}
+                              <Icon name={loading ? 'sync' : editingId ? 'save' : 'send'} className={`text-sm ${loading ? 'animate-spin' : ''}`} />
                           </button>
                       </div>
                   </div>

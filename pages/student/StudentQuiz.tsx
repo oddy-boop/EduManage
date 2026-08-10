@@ -1,23 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { Icon } from '../../components/Icon';
-import { useAuth } from '../../lib/AuthContext';
-import { UserRole } from '../../types';
 import { firestoreService } from '../../lib/services';
 
+// Students reach this page via a shared quiz link/QR code, not the school-portal login (there is
+// no Student role in Login.tsx) — they just identify themselves with a free-text ID below.
 export const StudentQuiz: React.FC = () => {
-  const { user } = useAuth();
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [studentName, setStudentName] = useState('');
   const [tempId, setTempId] = useState('');
   const [currentQuiz, setCurrentQuiz] = useState<any>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (user && user.role === UserRole.STUDENT) {
-      setStudentId(user.username || user.uid);
-    }
-  }, [user]);
 
   useEffect(() => {
     // Logic to fetch active quizzes for the student's grade/class
@@ -25,8 +19,9 @@ export const StudentQuiz: React.FC = () => {
        try {
          // Subscribing to get quizzes
          const unsub = firestoreService.onQuizzesChange((quizzes) => {
-           if (quizzes.length > 0) {
-             setCurrentQuiz(quizzes[0]); // Selecting the first available active quiz
+           const published = quizzes.filter((q: any) => q.isPublished);
+           if (published.length > 0) {
+             setCurrentQuiz(published[0]); // Selecting the first available active quiz
            }
            setLoading(false);
          });
@@ -94,20 +89,20 @@ export const StudentQuiz: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    let calculatedScore = 0;
-    QUESTIONS.forEach((q: any) => {
-      if (answers[q.id] === q.correctAnswer) {
-        calculatedScore += (q.points || 1);
-      }
-    });
-
     try {
-      // NOTE: quiz result persistence is not implemented yet - this score is
-      // only shown locally and is not saved anywhere for the teacher to see.
-      setScore(calculatedScore);
+      const result = await firestoreService.submitQuizResult({
+        quizId: currentQuiz.id,
+        studentId: studentId as string,
+        studentName: studentName || studentId || undefined,
+        answers
+      });
+      // The score is authoritative from the server (computed against the real correctAnswer
+      // values, which the client never has for a quiz it's actively taking).
+      setScore(result.score);
       setIsSubmitted(true);
     } catch (error) {
-      alert("Error submitting results.");
+      console.error("Failed to submit quiz result:", error);
+      alert("We couldn't save your results. Please check your connection and try again.");
     }
   };
 
@@ -121,8 +116,16 @@ export const StudentQuiz: React.FC = () => {
                   <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Secure Quiz Portal</h1>
                   <p className="text-slate-500 mt-2 text-sm mb-8">Enter your credentials to initiate synchronous assessment.</p>
                   <form onSubmit={handleLogin} className="space-y-4">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
+                        value={studentName}
+                        onChange={(e) => setStudentName(e.target.value)}
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl text-center font-bold focus:border-primary outline-none transition-all"
+                        placeholder="Your Full Name"
+                        required
+                      />
+                      <input
+                        type="text"
                         value={tempId}
                         onChange={(e) => setTempId(e.target.value)}
                         className="w-full p-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-mono text-center text-xl tracking-[0.2em] font-black focus:border-primary outline-none uppercase transition-all mb-4"

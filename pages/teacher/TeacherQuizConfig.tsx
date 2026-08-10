@@ -28,13 +28,22 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
 
   useEffect(() => {
-    // For simplicity, we fetch the latest "draft" quiz or create one
-    const fetchLatestQuiz = async () => {
-      // Logic to either find existing draft or just start fresh in real app
+    if (!user?.uid) {
       setLoading(false);
-    };
-    fetchLatestQuiz();
-  }, []);
+      return;
+    }
+    // Resume the teacher's most recent unpublished (draft) quiz, if any; otherwise start fresh.
+    const unsub = firestoreService.onTeacherQuizzesChange(user.uid, (quizzes) => {
+      const draft = quizzes.find((q: any) => !q.isPublished);
+      if (draft) {
+        setActiveQuizId(draft.id);
+        setQuizTitle(draft.title);
+        setQuestions(draft.questions || []);
+      }
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   const handleUpdateQuestion = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,36 +57,64 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
     setEditingQuestion(null);
   };
 
-  const handleCreateQuiz = async () => {
+  const buildQuestionPayload = () => questions.map(q => ({
+    id: q.id && !q.id.startsWith('temp-') ? q.id : Math.random().toString(36).substr(2, 9),
+    text: q.text,
+    type: q.type,
+    correctAnswer: q.correctAnswer,
+    options: q.options || [],
+    points: q.points || 1
+  }));
+
+  const handleSaveDraft = async () => {
     if (questions.length === 0) {
       alert("Please add at least one question.");
       return;
     }
     try {
       setSaving(true);
-      const quizId = await firestoreService.createQuiz({
-        title: quizTitle,
-        teacherId: user?.uid || 'anonymous',
-        questions: questions.map(q => ({
-          id: Math.random().toString(36).substr(2, 9),
-          text: q.text,
-          type: q.type,
-          correctAnswer: q.correctAnswer,
-          options: q.options || []
-        })),
-        settings: {
-          timeLimit: 45,
-          allowShuffle: true,
-          totalQuestions: questions.length
-        },
-        status: 'published',
-        createdAt: new Date().toISOString()
-      });
-      setActiveQuizId(quizId);
+      if (activeQuizId) {
+        await firestoreService.updateQuiz(activeQuizId, { title: quizTitle, questions: buildQuestionPayload() });
+      } else {
+        const created = await firestoreService.createQuiz({
+          title: quizTitle,
+          teacherId: user?.uid,
+          questions: buildQuestionPayload(),
+          isPublished: false
+        });
+        setActiveQuizId(created.id);
+      }
+      alert("Draft saved.");
+    } catch (error) {
+      console.error("Failed to save quiz draft:", error);
+      alert("Error saving draft.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublishQuiz = async () => {
+    if (questions.length === 0) {
+      alert("Please add at least one question.");
+      return;
+    }
+    try {
+      setSaving(true);
+      if (activeQuizId) {
+        await firestoreService.updateQuiz(activeQuizId, { title: quizTitle, questions: buildQuestionPayload(), isPublished: true });
+      } else {
+        const created = await firestoreService.createQuiz({
+          title: quizTitle,
+          teacherId: user?.uid,
+          questions: buildQuestionPayload(),
+          isPublished: true
+        });
+        setActiveQuizId(created.id);
+      }
       alert("Quiz successfully published and synced with Student Dashboard.");
       onNavigate(View.TEACHER_QUIZ_SHARE);
     } catch (error) {
-      console.error("Failed to create quiz:", error);
+      console.error("Failed to publish quiz:", error);
       alert("Error publishing quiz.");
     } finally {
       setSaving(false);
@@ -172,16 +209,25 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Quiz Status</h3>
               <div className="flex items-center gap-2 mb-6">
-                <span className="size-2 rounded-full bg-slate-300 animate-pulse"></span>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Awaiting Publication</span>
+                <span className={`size-2 rounded-full ${activeQuizId ? 'bg-emerald-400' : 'bg-slate-300'} animate-pulse`}></span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{activeQuizId ? 'Draft Saved' : 'Awaiting Publication'}</span>
               </div>
-              <button 
-                onClick={handleCreateQuiz}
-                disabled={saving}
-                className="w-full py-4 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
-              >
-                {saving ? 'Creating...' : 'Publish to Students'} <Icon name={saving ? 'sync' : 'publish'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={saving}
+                  className="w-full py-3 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-800 flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
+                >
+                  {saving ? 'Saving...' : 'Save Draft'} <Icon name={saving ? 'sync' : 'save'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={handlePublishQuiz}
+                  disabled={saving}
+                  className="w-full py-4 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
+                >
+                  {saving ? 'Publishing...' : 'Publish to Students'} <Icon name={saving ? 'sync' : 'publish'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
            </div>
         </div>
       </div>

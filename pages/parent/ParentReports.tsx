@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import { View } from '../../types';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { exportToCSV } from '../../lib/exportUtils';
 
 interface ParentReportsProps {
   onNavigate: (view: View, report?: any, child?: any) => void;
@@ -108,7 +109,10 @@ export const ParentReports: React.FC<ParentReportsProps> = ({ onNavigate }) => {
                  >
                      <Icon name="visibility" className="text-lg" /> Details
                  </button>
-                 <button className="aspect-square bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                 <button
+                    onClick={() => exportToCSV([report], `${activeChild?.name || 'student'}_${report.term}_report.csv`)}
+                    className="aspect-square bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                 >
                      <Icon name="download" />
                  </button>
              </div>

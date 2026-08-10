@@ -8,6 +8,8 @@ export const TeacherAttendance: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [finalizing, setFinalizing] = useState(false);
 
   // Use the teacher's first assigned class as default
   const activeClassId = user?.assignedClasses?.[0] || 'Unassigned';
@@ -63,6 +65,31 @@ export const TeacherAttendance: React.FC = () => {
 
   const today = new Date().toISOString().split('T')[0];
   const recordedToday = attendance.filter(a => a.date === today).length;
+  const visibleStudents = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleFinalize = async () => {
+    const unrecorded = students.filter(s => !attendance.find(a => a.studentId === s.id && a.date === today));
+    if (unrecorded.length === 0) {
+      alert("All students are already recorded for today.");
+      return;
+    }
+    if (!window.confirm(`${unrecorded.length} student(s) have no attendance recorded today. Mark them absent and finalize?`)) return;
+    try {
+      setFinalizing(true);
+      await Promise.all(unrecorded.map(s => firestoreService.markAttendance({
+        studentId: s.id,
+        parentId: s.parentId,
+        classId: activeClassId,
+        date: today,
+        status: 'absent'
+      })));
+      alert("Attendance finalized for today.");
+    } catch (error) {
+      alert("Failed to finalize attendance.");
+    } finally {
+      setFinalizing(false);
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark">
@@ -89,7 +116,6 @@ export const TeacherAttendance: React.FC = () => {
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
             </div>
-            <button className="p-2 hover:bg-slate-100 rounded-lg"><Icon name="search" /></button>
         </div>
       </div>
 
@@ -124,7 +150,13 @@ export const TeacherAttendance: React.FC = () => {
              <div className="flex gap-3">
                  <div className="relative">
                      <Icon name="search" className="absolute left-3 top-2.5 text-slate-400 text-sm" />
-                     <input type="text" placeholder="Search students..." className="pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm w-64" />
+                     <input
+                       type="text"
+                       value={search}
+                       onChange={(e) => setSearch(e.target.value)}
+                       placeholder="Search students..."
+                       className="pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm w-64"
+                     />
                  </div>
                  <button 
                   onClick={handleMarkAllPresent}
@@ -145,7 +177,7 @@ export const TeacherAttendance: React.FC = () => {
              </div>
              
              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                 {students.map((student, i) => {
+                 {visibleStudents.map((student, i) => {
                      const today = new Date().toISOString().split('T')[0];
                      const record = attendance.find(a => a.studentId === student.id && a.date === today);
                      const currentStatus = record?.status;
@@ -182,23 +214,20 @@ export const TeacherAttendance: React.FC = () => {
                              </div>
                          </div>
                          <div className="col-span-1 text-right pr-2">
-                             <button className="text-slate-400 hover:text-primary"><Icon name="edit_note" /></button>
+                             {currentStatus && <Icon name="check_circle" className="text-emerald-500 text-sm" />}
                          </div>
                      </div>
                      );
                  })}
-                 {students.length === 0 && (
-                    <div className="p-12 text-center text-slate-400 italic">No students found for this class.</div>
+                 {visibleStudents.length === 0 && (
+                    <div className="p-12 text-center text-slate-400 italic">
+                      {students.length === 0 ? 'No students found for this class.' : 'No students match your search.'}
+                    </div>
                  )}
              </div>
-             
-             {/* Pagination Footer */}
+
              <div className="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-tighter">
-                 <span>SHOWING {students.length} OF {students.length} STUDENTS</span>
-                 <div className="flex gap-2">
-                     <button className="p-1 hover:bg-slate-200 rounded"><Icon name="chevron_left" className="text-sm" /></button>
-                     <button className="p-1 hover:bg-slate-200 rounded"><Icon name="chevron_right" className="text-sm" /></button>
-                 </div>
+                 <span>SHOWING {visibleStudents.length} OF {students.length} STUDENTS</span>
              </div>
          </div>
       </div>
@@ -222,11 +251,13 @@ export const TeacherAttendance: React.FC = () => {
           </div>
           
           <div className="flex gap-3">
-              <button className="px-6 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50">
-                  Discard Draft
-              </button>
-              <button className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 shadow-lg shadow-primary/20 flex items-center gap-2">
-                  <Icon name="send" className="text-sm" /> Finalize & Submit Record
+              <button
+                onClick={handleFinalize}
+                disabled={finalizing}
+                className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-50"
+              >
+                  <Icon name={finalizing ? 'sync' : 'send'} className={`text-sm ${finalizing ? 'animate-spin' : ''}`} />
+                  {finalizing ? 'Finalizing...' : 'Finalize & Mark Remaining Absent'}
               </button>
           </div>
       </div>

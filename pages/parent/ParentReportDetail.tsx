@@ -9,24 +9,40 @@ interface ParentReportDetailProps {
 }
 
 export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNavigate, report, child }) => {
-  // Safe fallbacks for previewing mock data if no real report context is passed
-  const studentName = child?.name || 'Johnny Doe';
-  const studentId = child?.id || 'STU-2023-0485';
-  const studentClass = child?.classId || 'Grade 10-B';
-  
-  const termName = report?.term || 'Fall 2023';
-  const sessionName = report?.session || '2023-24';
-  const totalScore = report?.totalScore !== undefined ? report.totalScore : 92;
-  const letterGrade = report?.grade || 'A';
-  const reportStatus = report?.status || 'published';
-  const teacherComments = report?.comments || 'Johnny has shown remarkable growth this semester. His analytical skills have improved significantly. He is a respectful student and a reliable team player during group projects.';
-
-  const caScore = report?.grades?.ca !== undefined ? report.grades.ca : 38;
-  const examScore = report?.grades?.exam !== undefined ? report.grades.exam : 54;
-
   const handlePrint = () => {
     window.print();
   };
+
+  if (!report || !child) {
+    return (
+      <div className="p-6 lg:p-8 max-w-3xl mx-auto text-center py-24">
+        <Icon name="description" className="text-6xl text-slate-200 dark:text-slate-700 mb-4 mx-auto" />
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Report Selected</h1>
+        <p className="text-slate-500 text-sm mb-8">Select a report card from the Reports page to view its details.</p>
+        <button
+          onClick={() => onNavigate(View.PARENT_REPORTS)}
+          className="px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+        >
+          Back to Reports
+        </button>
+      </div>
+    );
+  }
+
+  const studentName = child.name || 'Student';
+  const studentId = child.id || child.loginId || 'N/A';
+  const studentClass = child.classId || 'Unassigned';
+
+  const termName = report.term || 'Current Term';
+  const totalScore = report.totalScore ?? null;
+  const letterGrade = report.grade || '—';
+  const reportStatus = report.status || 'pending';
+  const teacherComments = report.comments || 'No comments provided by the instructor.';
+
+  // report.grades may be keyed by subject ({ Mathematics: { score, grade, remarks } }) or by
+  // assessment component ({ ca: 38, exam: 54 }), depending on which teacher workflow produced it.
+  // Render whatever shape is actually present rather than assuming one.
+  const gradeEntries = Object.entries(report.grades || {}) as [string, any][];
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -75,7 +91,7 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
           <div className="size-16 bg-primary text-white rounded-full flex items-center justify-center mb-3">
             <Icon name="school" className="text-3xl" />
           </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">UNIVERSITY OF GHANA BASIC SCHOOL</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">EDUMANAGE ACADEMY</h2>
           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Office of the Principal • Terminal Assessment Report</p>
         </div>
         
@@ -87,7 +103,7 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
               <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold uppercase">{reportStatus}</span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">Academic Progress Report</h1>
-            <p className="text-slate-500 text-sm mt-1 font-semibold">{termName} Semester ({sessionName})</p>
+            <p className="text-slate-500 text-sm mt-1 font-semibold">{termName}</p>
           </div>
           <div className="flex gap-3 no-print">
             <button 
@@ -129,7 +145,7 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
             </div>
             <div>
               <p className="text-xs font-bold uppercase text-slate-500">Term Cumulative Score</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{totalScore} <span className="text-sm font-medium text-slate-400">/ 100</span></p>
+              <p className="text-2xl font-black text-slate-900 dark:text-white">{totalScore ?? 'N/A'} <span className="text-sm font-medium text-slate-400">/ 100</span></p>
             </div>
           </div>
           <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
@@ -151,50 +167,45 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
           <table className="w-full text-left">
             <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500">
               <tr>
-                <th className="px-6 py-4">Assessment Component</th>
-                <th className="px-6 py-4 text-center">Weight</th>
-                <th className="px-6 py-4 text-center">Max Marks</th>
-                <th className="px-6 py-4 text-center">Marks Obtained</th>
+                <th className="px-6 py-4">Component / Subject</th>
+                <th className="px-6 py-4 text-center">Score</th>
+                <th className="px-6 py-4 text-center">Grade</th>
                 <th className="px-6 py-4">Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-              <tr className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center">
-                      <Icon name="assignment" />
-                    </div>
-                    <span className="font-bold text-slate-900 dark:text-white">Continuous Assessment</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-center font-medium text-slate-500">40%</td>
-                <td className="px-6 py-4 text-center font-medium text-slate-500">40</td>
-                <td className="px-6 py-4 text-center font-bold text-slate-900 dark:text-white">{caScore}</td>
-                <td className="px-6 py-4 text-xs text-slate-500 italic">Evaluated quizzes, class activities, and projects.</td>
-              </tr>
-              <tr className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="size-8 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-600 flex items-center justify-center">
-                      <Icon name="draw" />
-                    </div>
-                    <span className="font-bold text-slate-900 dark:text-white">End of Semester Exam</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-center font-medium text-slate-500">60%</td>
-                <td className="px-6 py-4 text-center font-medium text-slate-500">60</td>
-                <td className="px-6 py-4 text-center font-bold text-slate-900 dark:text-white">{examScore}</td>
-                <td className="px-6 py-4 text-xs text-slate-500 italic">Comprehensive theoretical and practical examination.</td>
-              </tr>
+              {gradeEntries.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No component-level scores were recorded for this report.</td>
+                </tr>
+              )}
+              {gradeEntries.map(([key, value]) => {
+                const isDetailed = value && typeof value === 'object';
+                const score = isDetailed ? value.score : value;
+                const grade = isDetailed ? value.grade : null;
+                const remarks = isDetailed ? value.remarks : null;
+                return (
+                  <tr key={key} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center">
+                          <Icon name="assignment" />
+                        </div>
+                        <span className="font-bold text-slate-900 dark:text-white capitalize">{key}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center font-bold text-slate-900 dark:text-white">{score ?? 'N/A'}</td>
+                    <td className="px-6 py-4 text-center font-medium text-slate-500">{grade || '—'}</td>
+                    <td className="px-6 py-4 text-xs text-slate-500 italic">{remarks || '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 font-bold">
               <tr>
                 <td className="px-6 py-4 text-slate-900 dark:text-white">Cumulative Term Performance</td>
-                <td className="px-6 py-4 text-center text-slate-500">100%</td>
-                <td className="px-6 py-4 text-center text-slate-500">100</td>
-                <td className="px-6 py-4 text-center text-primary text-base font-black">{totalScore}</td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 text-center text-primary text-base font-black">{totalScore ?? 'N/A'}</td>
+                <td className="px-6 py-4 text-center" colSpan={2}>
                   <span className="inline-block px-2.5 py-0.5 rounded bg-primary text-white text-xs font-black uppercase">Grade: {letterGrade}</span>
                 </td>
               </tr>
@@ -236,12 +247,10 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
           <div className="text-center">
             <div className="border-b border-slate-400 h-8 w-48 mx-auto mb-2"></div>
             <p className="font-bold text-slate-700 uppercase">Class Instructor Signature</p>
-            <p className="text-[10px] text-slate-400">Mrs. Clara Oswald</p>
           </div>
           <div className="text-center">
             <div className="border-b border-slate-400 h-8 w-48 mx-auto mb-2"></div>
             <p className="font-bold text-slate-700 uppercase">Headteacher / Supervisor Signature</p>
-            <p className="text-[10px] text-slate-400">Mr. Prince Boakye-Sekyerehene</p>
           </div>
         </div>
 

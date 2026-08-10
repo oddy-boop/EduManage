@@ -7,6 +7,7 @@ interface GradeConfig {
   id: string;
   name: string;
   baseFee: number;
+  classTeacherId?: string | null;
 }
 
 interface CourseConfig {
@@ -20,6 +21,7 @@ export const AdminSettings: React.FC = () => {
   const { user } = useAuth();
   const [grades, setGrades] = useState<GradeConfig[]>([]);
   const [courses, setCourses] = useState<CourseConfig[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'grades' | 'courses' | 'system'>('grades');
@@ -59,6 +61,10 @@ export const AdminSettings: React.FC = () => {
         setAuditLogs(data);
     });
 
+    const unsubTeachers = firestoreService.getTeachers((data) => {
+        setTeachers(data);
+    });
+
     const fetchSystemSettings = async () => {
       try {
         const settings = await firestoreService.getSystemSettings();
@@ -75,8 +81,11 @@ export const AdminSettings: React.FC = () => {
         unsubGrades();
         unsubCourses();
         unsubAudit();
+        unsubTeachers();
     };
   }, []);
+
+  const teacherName = (uid?: string | null) => teachers.find(t => t.uid === uid)?.name || null;
 
   const handleAddGrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +144,7 @@ export const AdminSettings: React.FC = () => {
       await firestoreService.createGradeConfig(editingGrade.id, {
         name: editingGrade.name,
         baseFee: editingGrade.baseFee,
+        classTeacherId: editingGrade.classTeacherId || null,
         updatedAt: new Date().toISOString()
       });
       if (user) {
@@ -143,7 +153,7 @@ export const AdminSettings: React.FC = () => {
           userEmail: user.email || '',
           userName: user.name || '',
           action: 'Edit Grade Config',
-          details: `Edited grade level configuration: ${editingGrade.name} to Base Fee: GH₵${editingGrade.baseFee}`,
+          details: `Edited grade level configuration: ${editingGrade.name} to Base Fee: GH₵${editingGrade.baseFee}${editingGrade.classTeacherId ? `, Class Teacher: ${teacherName(editingGrade.classTeacherId)}` : ''}`,
           type: 'config_change'
         });
       }
@@ -396,6 +406,7 @@ export const AdminSettings: React.FC = () => {
                     <tr>
                       <th className="px-6 py-4">Grade / Class</th>
                       <th className="px-6 py-4">Base Fee Rate</th>
+                      <th className="px-6 py-4">Class Teacher</th>
                       <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -404,6 +415,13 @@ export const AdminSettings: React.FC = () => {
                       <tr key={g.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
                         <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{g.name}</td>
                         <td className="px-6 py-4 font-semibold text-slate-500">GH₵{g.baseFee?.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td className="px-6 py-4">
+                          {teacherName(g.classTeacherId) ? (
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{teacherName(g.classTeacherId)}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs">Not assigned</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
                            <button 
                              onClick={() => setEditingGrade(g)}
@@ -422,7 +440,7 @@ export const AdminSettings: React.FC = () => {
                     ))}
                     {grades.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="px-6 py-8 text-center text-slate-400 italic">No grade configs defined.</td>
+                        <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No grade configs defined.</td>
                       </tr>
                     )}
                   </tbody>
@@ -756,6 +774,20 @@ export const AdminSettings: React.FC = () => {
                       required
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Class Teacher</label>
+                  <select
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
+                    value={editingGrade.classTeacherId || ''}
+                    onChange={(e) => setEditingGrade({ ...editingGrade, classTeacherId: e.target.value || null })}
+                  >
+                    <option value="">Not assigned</option>
+                    {teachers.map(t => (
+                      <option key={t.uid} value={t.uid}>{t.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-450 mt-1 italic">The class teacher merges all subject teachers' scores into the final report card and submits it for approval.</p>
                 </div>
               </div>
               <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">

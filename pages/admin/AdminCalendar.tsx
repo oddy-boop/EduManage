@@ -7,6 +7,22 @@ export const AdminCalendar: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', date: '', type: 'event', audience: 'all' });
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const leadingBlanks = firstOfMonth.getDay(); // 0 = Sunday
+  const monthLabel = firstOfMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const goToPrevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else { setViewMonth(m => m - 1); }
+  };
+  const goToNextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else { setViewMonth(m => m + 1); }
+  };
+  const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
 
   useEffect(() => {
     // Subscribing to all events
@@ -67,29 +83,45 @@ export const AdminCalendar: React.FC = () => {
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-8">
           {/* Calendar View Placeholder (Simplified for logic transition) */}
           <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">{monthLabel}</h3>
+                  <div className="flex items-center gap-2">
+                      <button onClick={goToToday} className="px-3 py-1.5 text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-lg">Today</button>
+                      <button onClick={goToPrevMonth} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">
+                          <Icon name="chevron_left" className="text-lg" />
+                      </button>
+                      <button onClick={goToNextMonth} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">
+                          <Icon name="chevron_right" className="text-lg" />
+                      </button>
+                  </div>
+              </div>
               <div className="grid grid-cols-7 mb-4 text-center border-b border-slate-100 dark:border-slate-700 pb-2">
                   {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
                       <div key={day} className="text-[10px] font-black text-slate-400 py-2">{day}</div>
                   ))}
               </div>
               <div className="flex-1 grid grid-cols-7 gap-2">
-                  {/* Simplified 31-day grid representing current month */}
-                  {[...Array(31)].map((_, i) => {
+                  {[...Array(leadingBlanks)].map((_, i) => (
+                      <div key={`blank-${i}`} className="min-h-[80px]" />
+                  ))}
+                  {[...Array(daysInMonth)].map((_, i) => {
                       const day = i + 1;
+                      const isToday = viewYear === today.getFullYear() && viewMonth === today.getMonth() && day === today.getDate();
                       const dayEvents = events.filter(e => {
                         const date = new Date(e.date);
-                        return date.getDate() === day;
+                        return date.getFullYear() === viewYear && date.getMonth() === viewMonth && date.getDate() === day;
                       });
-                      
+
                       return (
-                          <div key={day} className="border border-slate-100 dark:border-slate-700/50 rounded-lg p-2 min-h-[80px] hover:border-primary transition-all group relative">
-                              <span className="text-xs font-bold text-slate-500">{day}</span>
+                          <div key={day} className={`border rounded-lg p-2 min-h-[80px] hover:border-primary transition-all group relative ${isToday ? 'border-primary bg-primary/5' : 'border-slate-100 dark:border-slate-700/50'}`}>
+                              <span className={`text-xs font-bold ${isToday ? 'text-primary' : 'text-slate-500'}`}>{day}</span>
                               <div className="mt-1 space-y-1">
                                 {dayEvents.map((e, idx) => (
-                                  <div 
-                                    key={idx} 
+                                  <div
+                                    key={idx}
+                                    title={e.title}
                                     className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold truncate ${
-                                      e.type === 'holiday' ? 'bg-red-50 text-red-600' : 
+                                      e.type === 'holiday' ? 'bg-red-50 text-red-600' :
                                       e.type === 'exam' ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'
                                     }`}
                                   >
@@ -97,10 +129,9 @@ export const AdminCalendar: React.FC = () => {
                                   </div>
                                 ))}
                               </div>
-                              <button 
+                              <button
                                 onClick={() => {
-                                  const date = new Date();
-                                  date.setDate(day);
+                                  const date = new Date(viewYear, viewMonth, day);
                                   setNewEvent({ ...newEvent, date: date.toISOString().split('T')[0] });
                                   setIsAdding(true);
                                 }}

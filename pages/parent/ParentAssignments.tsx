@@ -9,6 +9,7 @@ export const ParentAssignments: React.FC = () => {
   const [children, setChildren] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailAssignment, setDetailAssignment] = useState<any>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -94,7 +95,7 @@ export const ParentAssignments: React.FC = () => {
                 {item.title}
               </div>
               <div className="col-span-3 md:col-span-2">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">{item.dueDate?.toDate ? item.dueDate.toDate().toLocaleDateString() : 'No date'}</p>
+                <p className="text-sm font-medium text-slate-900 dark:text-white">{item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'No date'}</p>
                 <p className={`text-[10px] font-bold text-slate-400`}>Official Deadline</p>
               </div>
               <div className="col-span-2">
@@ -103,7 +104,7 @@ export const ParentAssignments: React.FC = () => {
                 </span>
               </div>
               <div className="col-span-2 md:col-span-1 text-right">
-                <button className="text-primary hover:text-blue-700 font-bold text-xs whitespace-nowrap">
+                <button onClick={() => setDetailAssignment(item)} className="text-primary hover:text-blue-700 font-bold text-xs whitespace-nowrap">
                   View Details
                 </button>
               </div>
@@ -115,6 +116,27 @@ export const ParentAssignments: React.FC = () => {
           )}
         </div>
       </div>
+
+      {detailAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDetailAssignment(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-start">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white">{detailAssignment.title}</h3>
+                <p className="text-xs text-slate-500 mt-1">{detailAssignment.subject || detailAssignment.classId}</p>
+              </div>
+              <button onClick={() => setDetailAssignment(null)} className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{detailAssignment.description || 'No further details provided.'}</p>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                <Icon name="event" className="text-sm" />
+                Due {detailAssignment.dueDate ? new Date(detailAssignment.dueDate).toLocaleDateString() : 'No date'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -43,3 +43,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Login page — animated gradient-mesh background */
+@keyframes drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.1); }
+}
+@keyframes drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-25px, 25px) scale(1.05); }
+}
+@keyframes drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, 20px) scale(1.08); }
+}
+.login-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.55;
+}
+.login-blob-a { animation: drift-a 10s ease-in-out infinite; }
+.login-blob-b { animation: drift-b 12s ease-in-out infinite; }
+.login-blob-c { animation: drift-c 11s ease-in-out infinite; }
+.login-blob-d { animation: drift-a 13s ease-in-out infinite reverse; }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-blob-a, .login-blob-b, .login-blob-c, .login-blob-d {
+    animation: none;
+  }
+}

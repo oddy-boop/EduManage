@@ -8,6 +8,8 @@ import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
 import { TeacherQuizConfig } from './pages/teacher/TeacherQuizConfig';
 import { TeacherQuizShare } from './pages/teacher/TeacherQuizShare';
 import { TeacherQuizResults } from './pages/teacher/TeacherQuizResults';
+import { TeacherAssessmentBook } from './pages/teacher/TeacherAssessmentBook';
+import { TeacherClassReview } from './pages/teacher/TeacherClassReview';
 import { TeacherReportEntry } from './pages/teacher/TeacherReportEntry';
 import { TeacherAssignments } from './pages/teacher/TeacherAssignments';
 import { TeacherAttendance } from './pages/teacher/TeacherAttendance';
@@ -65,34 +67,12 @@ const App: React.FC = () => {
     );
   }
 
-  const handleLogin = (selectedRole: UserRole) => {
-    // For demo purposes, we still allow local role switching if not real-authed
-    // but the Login component will prioritize real auth via sign-in button
-    setRole(selectedRole);
-    switch (selectedRole) {
-      case UserRole.TEACHER:
-        setCurrentView(View.TEACHER_DASHBOARD);
-        break;
-      case UserRole.ADMIN:
-        setCurrentView(View.ADMIN_DASHBOARD);
-        break;
-      case UserRole.PARENT:
-        setCurrentView(View.PARENT_DASHBOARD);
-        break;
-      case UserRole.STUDENT:
-        setCurrentView(View.STUDENT_QUIZ);
-        break;
-      default:
-        setCurrentView(View.TEACHER_DASHBOARD);
-    }
-  };
-
   const handleNavigation = (view: View) => {
     setCurrentView(view);
   };
 
   if (!role || currentView === View.LOGIN) {
-    return <Login onLogin={handleLogin} />;
+    return <Login />;
   }
 
   if (role === UserRole.TEACHER) {
@@ -102,7 +82,9 @@ const App: React.FC = () => {
         {currentView === View.TEACHER_QUIZ_CONFIG && <TeacherQuizConfig onNavigate={handleNavigation} />}
         {currentView === View.TEACHER_QUIZ_SHARE && <TeacherQuizShare onNavigate={handleNavigation} />}
         {currentView === View.TEACHER_QUIZ_RESULTS && <TeacherQuizResults onNavigate={handleNavigation} />}
+        {currentView === View.TEACHER_ASSESSMENT_BOOK && <TeacherAssessmentBook />}
         {currentView === View.TEACHER_REPORT_ENTRY && <TeacherReportEntry />}
+        {currentView === View.TEACHER_CLASS_REVIEW && <TeacherClassReview />}
         {currentView === View.TEACHER_ASSIGNMENTS && <TeacherAssignments />}
         {currentView === View.TEACHER_ATTENDANCE && <TeacherAttendance />}
       </TeacherLayout>

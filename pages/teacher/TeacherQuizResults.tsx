@@ -3,36 +3,68 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { View } from '../../types';
 import { firestoreService } from '../../lib/services';
+import { useAuth } from '../../lib/AuthContext';
+import { exportToCSV } from '../../lib/exportUtils';
 
 interface TeacherQuizResultsProps {
   onNavigate: (view: View) => void;
 }
 
 export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNavigate }) => {
+  const { user } = useAuth();
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
+  const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Logic to fetch all quizzes created by this teacher
-    const unsub = firestoreService.onQuizzesChange((data) => {
+    if (!user?.uid) {
+      setLoading(false);
+      return;
+    }
+    const unsub = firestoreService.onTeacherQuizzesChange(user.uid, (data) => {
       setQuizzes(data);
-      if (data.length > 0) setSelectedQuiz(data[0]);
+      setSelectedQuiz(prev => prev ? (data.find((q: any) => q.id === prev.id) || data[0] || null) : (data[0] || null));
       setLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [user?.uid]);
 
-  // Quiz submissions are not yet stored anywhere in the database, so there is
-  // no real results data to show here. Surface that honestly instead of
-  // displaying fabricated placeholder students.
-  const students: any[] = [];
+  useEffect(() => {
+    if (!selectedQuiz) {
+      setResults([]);
+      return;
+    }
+    const unsub = firestoreService.getQuizResults(selectedQuiz.id, setResults);
+    return () => unsub();
+  }, [selectedQuiz?.id]);
+
+  const [detailResult, setDetailResult] = useState<any>(null);
+
+  const students = useMemo(() => results.map(r => ({
+    id: r.studentId,
+    name: r.studentName || r.studentId,
+    score: `${r.score} / ${r.totalQuestions}`,
+    scoreValue: r.score,
+    correctCount: r.correctCount,
+    totalQuestions: r.totalQuestions,
+    submittedAt: r.submittedAt,
+    answers: r.answers
+  })), [results]);
 
   const stats = useMemo(() => {
-    const scores = students.map(s => parseInt(s.score.replace(/[^0-9]/g, '')) || 0);
-    const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-    return { avgScore, completedCount: students.length, totalClassSize: 0 };
-  }, [students]);
+    const pctScores = results.map(r => r.totalQuestions > 0 ? (r.correctCount / r.totalQuestions) * 100 : 0);
+    const avgScore = pctScores.length ? Math.round(pctScores.reduce((a, b) => a + b, 0) / pctScores.length) : 0;
+    return { avgScore, completedCount: students.length, totalClassSize: students.length };
+  }, [students, results]);
+
+  const handleExport = () => {
+    if (students.length === 0) return;
+    exportToCSV(
+      students.map((s, i) => ({ Rank: i + 1, Name: s.name, StudentID: s.id, Score: s.score, SubmittedAt: s.submittedAt })),
+      `${selectedQuiz?.title || 'quiz'}-results.csv`
+    );
+  };
 
   if (loading) {
     return (
@@ -64,7 +96,11 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
            </div>
         </div>
         <div className="flex gap-3">
-             <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+             <button
+               onClick={handleExport}
+               disabled={students.length === 0}
+               className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
+             >
                <Icon name="download" /> Export Registrar CSV
             </button>
         </div>
@@ -73,8 +109,8 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
               <div className="size-10 rounded-xl bg-blue-50 text-primary flex items-center justify-center mb-4"><Icon name="groups" /></div>
-              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Global Participation</p>
-              <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{stats.completedCount} / {stats.totalClassSize}</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Submissions Received</p>
+              <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{stats.completedCount}</p>
           </div>
           <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
               <div className="size-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4"><Icon name="analytics" /></div>
@@ -82,9 +118,9 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
               <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{stats.avgScore}%</p>
           </div>
           <div className="bg-slate-900 text-slate-400 p-6 rounded-2xl shadow-xl flex flex-col justify-end relative overflow-hidden">
-              <Icon name="construction" className="absolute top-[-20px] right-[-20px] text-8xl opacity-10 text-white" />
-              <p className="text-[10px] font-black uppercase tracking-widest mb-1">Status</p>
-              <p className="text-xl font-bold text-white">Not Yet Available</p>
+              <Icon name="quiz" className="absolute top-[-20px] right-[-20px] text-8xl opacity-10 text-white" />
+              <p className="text-[10px] font-black uppercase tracking-widest mb-1">Active Assessment</p>
+              <p className="text-xl font-bold text-white truncate">{selectedQuiz?.title || 'No quiz selected'}</p>
           </div>
       </div>
 
@@ -104,10 +140,17 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                      {students.length === 0 && (
+                      {quizzes.length === 0 && (
                         <tr>
                           <td colSpan={5} className="px-8 py-16 text-center text-slate-400 italic">
-                            Quiz result collection isn't wired up yet — student submissions aren't being saved to a results table. This view will populate once that's built.
+                            You haven't created any quizzes yet. Head to Quiz Configuration to build one.
+                          </td>
+                        </tr>
+                      )}
+                      {quizzes.length > 0 && students.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-8 py-16 text-center text-slate-400 italic">
+                            No student submissions yet for this quiz.
                           </td>
                         </tr>
                       )}
@@ -122,7 +165,12 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
                                 <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 px-3 py-1 rounded-full text-xs font-black">{row.score}</span>
                               </td>
                               <td className="px-8 py-5 text-right">
-                                  <button className="text-xs font-black text-primary hover:underline uppercase tracking-widest">Detail Audit</button>
+                                  <button
+                                    onClick={() => setDetailResult(row)}
+                                    className="text-xs font-black text-primary hover:underline uppercase tracking-widest"
+                                  >
+                                    Detail Audit
+                                  </button>
                               </td>
                           </tr>
                       ))}
@@ -130,6 +178,33 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
               </table>
           </div>
       </div>
+
+      {detailResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDetailResult(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white">{detailResult.name}</h3>
+                <p className="text-xs text-slate-500">{detailResult.correctCount} / {detailResult.totalQuestions} correct</p>
+              </div>
+              <button onClick={() => setDetailResult(null)} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"><Icon name="close" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-3">
+              {(selectedQuiz?.questions || []).map((q: any, idx: number) => {
+                const given = detailResult.answers?.[q.id];
+                const isCorrect = given === q.correctAnswer;
+                return (
+                  <div key={q.id} className={`p-4 rounded-xl border ${isCorrect ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/10' : 'border-red-200 bg-red-50 dark:bg-red-900/10'}`}>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white mb-1">{idx + 1}. {q.text}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">Answered: <span className="font-bold">{given ?? '(no answer)'}</span></p>
+                    {!isCorrect && <p className="text-xs text-emerald-700 dark:text-emerald-400">Correct answer: {q.correctAnswer}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

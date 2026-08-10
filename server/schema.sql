@@ -50,8 +50,14 @@ CREATE TABLE IF NOT EXISTS fees (
     due_date TIMESTAMP WITH TIME ZONE,
     status VARCHAR(50) NOT NULL,
     type VARCHAR(255),
+    term VARCHAR(100) DEFAULT 'Term 2',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS quizzes (
@@ -62,6 +68,56 @@ CREATE TABLE IF NOT EXISTS quizzes (
     questions JSONB NOT NULL DEFAULT '[]'::jsonb,
     is_published BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS quiz_results (
+    id VARCHAR(255) PRIMARY KEY,
+    quiz_id VARCHAR(255) NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    student_id VARCHAR(255) NOT NULL,
+    student_name VARCHAR(255),
+    score NUMERIC(6, 2) NOT NULL DEFAULT 0,
+    total_questions INT NOT NULL DEFAULT 0,
+    correct_count INT NOT NULL DEFAULT 0,
+    answers JSONB DEFAULT '{}'::jsonb,
+    submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (quiz_id, student_id)
+);
+
+-- Teacher's Assessment Book: individual continuous-assessment entries (tests, homework, class
+-- work, etc.) that Report Entry's CA score is auto-computed from (see /api/assessments/summary).
+CREATE TABLE IF NOT EXISTS assessments (
+    id VARCHAR(255) PRIMARY KEY,
+    student_id VARCHAR(255) NOT NULL,
+    teacher_id VARCHAR(255) NOT NULL,
+    class_id VARCHAR(255) NOT NULL,
+    term VARCHAR(255) NOT NULL,
+    subject VARCHAR(255),
+    category VARCHAR(50) NOT NULL,
+    title VARCHAR(255),
+    score NUMERIC(6, 2) NOT NULL,
+    max_score NUMERIC(6, 2) NOT NULL DEFAULT 100,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- One row per (student, subject, term): a subject teacher's contribution to a report card. The
+-- Class Teacher (grade_configs.class_teacher_id) merges every submitted row for a class+term into
+-- the final "reports" row shown to parents/admin.
+CREATE TABLE IF NOT EXISTS subject_reports (
+    id VARCHAR(255) PRIMARY KEY,
+    student_id VARCHAR(255) NOT NULL,
+    teacher_id VARCHAR(255) NOT NULL,
+    class_id VARCHAR(255) NOT NULL,
+    term VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    ca_score NUMERIC(6, 2) NOT NULL DEFAULT 0,
+    exam_score NUMERIC(6, 2) NOT NULL DEFAULT 0,
+    remarks TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    submitted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (student_id, subject, term)
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -88,6 +144,12 @@ CREATE TABLE IF NOT EXISTS reports (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Note: the users table above already includes the `password` column (bcrypt hash, nullable
+-- only until an account's first login/password-set). Foreign key constraints for
+-- students.parent_id, attendance.student_id, fees.student_id, reports.student_id, and
+-- quizzes.teacher_id are added defensively at boot time in server.js (see startServer()),
+-- using NOT VALID so they never block startup against a database with pre-existing data.
+
 CREATE TABLE IF NOT EXISTS schedules (
     id VARCHAR(255) PRIMARY KEY,
     class_id VARCHAR(255) NOT NULL,
@@ -109,6 +171,7 @@ CREATE TABLE IF NOT EXISTS grade_configs (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     base_fee NUMERIC(10, 2) NOT NULL,
+    class_teacher_id VARCHAR(255),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

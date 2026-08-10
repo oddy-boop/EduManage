@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from './Icon';
 import { View } from '../types';
 import { useAuth } from '../lib/AuthContext';
+import { firestoreService } from '../lib/services';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -58,11 +59,23 @@ export const TeacherLayout: React.FC<LayoutProps> = ({ children, onNavigate, cur
             active={currentView === View.TEACHER_QUIZ_RESULTS} 
             onClick={() => { onNavigate(View.TEACHER_QUIZ_RESULTS); setIsSidebarOpen(false); }} 
           />
-          <NavItem 
-            icon="analytics" 
-            label="Report Generation" 
-            active={currentView === View.TEACHER_REPORT_ENTRY} 
-            onClick={() => { onNavigate(View.TEACHER_REPORT_ENTRY); setIsSidebarOpen(false); }} 
+          <NavItem
+            icon="fact_check"
+            label="Assessment Book"
+            active={currentView === View.TEACHER_ASSESSMENT_BOOK}
+            onClick={() => { onNavigate(View.TEACHER_ASSESSMENT_BOOK); setIsSidebarOpen(false); }}
+          />
+          <NavItem
+            icon="analytics"
+            label="Report Generation"
+            active={currentView === View.TEACHER_REPORT_ENTRY}
+            onClick={() => { onNavigate(View.TEACHER_REPORT_ENTRY); setIsSidebarOpen(false); }}
+          />
+          <NavItem
+            icon="task_alt"
+            label="Class Teacher Review"
+            active={currentView === View.TEACHER_CLASS_REVIEW}
+            onClick={() => { onNavigate(View.TEACHER_CLASS_REVIEW); setIsSidebarOpen(false); }}
           />
           <NavItem 
             icon="assignment" 
@@ -233,33 +246,98 @@ const NavItem: React.FC<{ icon: string; label: string; active?: boolean; onClick
   </button>
 );
 
-const Header: React.FC<{ role: string; onMenuClick?: () => void }> = ({ role, onMenuClick }) => (
-  <header className="h-16 flex items-center justify-between px-4 lg:px-8 bg-surface-light dark:bg-surface-dark border-b border-slate-200 dark:border-slate-800 shrink-0">
-    <div className="flex items-center gap-4">
-      {onMenuClick && (
-        <button 
-          onClick={onMenuClick}
-          className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-        >
-          <Icon name="menu" className="text-[24px]" />
-        </button>
-      )}
-      <h2 className="text-base lg:text-lg font-semibold text-slate-800 dark:text-white truncate">Dashboard Overview</h2>
-    </div>
-    <div className="flex items-center gap-2 lg:gap-6">
-      <div className="flex items-center gap-2">
-        <button className="relative p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-          <Icon name="notifications" className="text-[24px]" />
-          <span className="absolute top-2 right-2.5 size-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
-        </button>
-        <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-        <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-          <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-            <Icon name="account_circle" className="text-[16px]" />
-          </div>
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Account</span>
-        </button>
+const Header: React.FC<{ role: string; onMenuClick?: () => void }> = ({ role, onMenuClick }) => {
+  const { user, signOut } = useAuth();
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [accountOpen, setAccountOpen] = React.useState(false);
+  const [announcements, setAnnouncements] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    const audience = role === 'Admin' ? null : role.toLowerCase() + 's';
+    const unsub = firestoreService.getAnnouncements(audience, (data) => setAnnouncements(data.slice(0, 5)));
+    return () => unsub();
+  }, [role]);
+
+  const closeAll = () => { setNotifOpen(false); setAccountOpen(false); };
+
+  return (
+    <header className="h-16 flex items-center justify-between px-4 lg:px-8 bg-surface-light dark:bg-surface-dark border-b border-slate-200 dark:border-slate-800 shrink-0 relative">
+      <div className="flex items-center gap-4">
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <Icon name="menu" className="text-[24px]" />
+          </button>
+        )}
+        <h2 className="text-base lg:text-lg font-semibold text-slate-800 dark:text-white truncate">Dashboard Overview</h2>
       </div>
-    </div>
-  </header>
-);
+      <div className="flex items-center gap-2 lg:gap-6">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => { setNotifOpen(!notifOpen); setAccountOpen(false); }}
+              className="relative p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <Icon name="notifications" className="text-[24px]" />
+              {announcements.length > 0 && (
+                <span className="absolute top-2 right-2.5 size-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
+              )}
+            </button>
+            {notifOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={closeAll} />
+                <div className="absolute right-0 top-12 z-20 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Recent Notices</p>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                    {announcements.length === 0 && (
+                      <p className="p-4 text-xs text-slate-400 italic">No notices right now.</p>
+                    )}
+                    {announcements.map((a) => (
+                      <div key={a.id} className="p-4">
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{a.title}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{a.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+          <div className="relative">
+            <button
+              onClick={() => { setAccountOpen(!accountOpen); setNotifOpen(false); }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <Icon name="account_circle" className="text-[16px]" />
+              </div>
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Account</span>
+            </button>
+            {accountOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={closeAll} />
+                <div className="absolute right-0 top-12 z-20 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name || role}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email || role}</p>
+                  </div>
+                  <button
+                    onClick={() => signOut()}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                  >
+                    <Icon name="logout" className="text-lg" /> Sign Out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
