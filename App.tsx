@@ -18,6 +18,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminRegistration } from './pages/admin/AdminRegistration';
 import { AdminFees } from './pages/admin/AdminFees';
 import { AdminCalendar } from './pages/admin/AdminCalendar';
+import { AdminAttendance } from './pages/admin/AdminAttendance';
 import { AdminApprovals } from './pages/admin/AdminApprovals';
 import { AdminSettings } from './pages/admin/AdminSettings';
 import { AdminAuditLogs } from './pages/admin/AdminAuditLogs';
@@ -30,8 +31,17 @@ import { ParentReportDetail } from './pages/parent/ParentReportDetail';
 import { StudentQuiz } from './pages/student/StudentQuiz';
 import { GuestView } from './pages/GuestView';
 
+/**
+ * The quiz link the teacher shares is /join-quiz/<id>. There is no router in this
+ * app, so without this the link simply rendered the staff login page and the QR
+ * code led nowhere. It is checked before auth because a student taking a quiz has
+ * no portal account to be logged into.
+ */
+const isQuizLink = () => /^\/join-quiz\/[^/]+/.test(window.location.pathname);
+
 const App: React.FC = () => {
   const { user, loading } = useAuth();
+  const [quizLink] = useState(isQuizLink);
   const [role, setRole] = useState<UserRole | null>(null);
   const [currentView, setCurrentView] = useState<View>(View.LOGIN);
   const [selectedReport, setSelectedReport] = useState<any>(null);
@@ -65,6 +75,12 @@ const App: React.FC = () => {
       if (currentView !== View.LOGIN) setCurrentView(View.LOGIN);
     }
   }, [user, role, currentView]);
+
+  // Checked ahead of the session gate: a student on a shared quiz link is not a
+  // portal user, and must not be bounced to the staff login screen.
+  if (quizLink) {
+    return <StudentQuiz />;
+  }
 
   if (loading) {
     return (
@@ -104,6 +120,7 @@ const App: React.FC = () => {
         {currentView === View.ADMIN_DASHBOARD && <AdminDashboard onNavigate={handleNavigation} />}
         {currentView === View.ADMIN_REGISTRATION && <AdminRegistration />}
         {currentView === View.ADMIN_FEES && <AdminFees />}
+        {currentView === View.ADMIN_ATTENDANCE && <AdminAttendance />}
         {currentView === View.ADMIN_CALENDAR && <AdminCalendar />}
         {currentView === View.ADMIN_APPROVALS && <AdminApprovals />}
         {currentView === View.ADMIN_SETTINGS && <AdminSettings />}

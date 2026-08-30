@@ -23,6 +23,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
   const [loading, setLoading] = useState(true);
 
   const assignedClasses = user?.assignedClasses || [];
+  // Being a class teacher is recorded on the class (grade_configs.class_teacher_id),
+  // not on the teacher. It was previously guessed from assignedClasses[0] — the first
+  // class they TEACH — so a teacher who takes a subject in JHS 1 but is form teacher
+  // of JHS 2 was labelled "Class teacher · JHS 1", contradicting the review screen.
+  const [formClasses, setFormClasses] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -35,16 +40,36 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
       setLoading(false);
     });
 
-    const primaryClass = assignedClasses[0] || 'Unassigned';
-    const unsubAssignments = firestoreService.getAssignments(primaryClass, setAssignments);
-    const unsubSchedule = firestoreService.getClassSchedule(primaryClass, setSchedule);
+    const unsubGrades = firestoreService.getGrades((data: any[]) =>
+      setFormClasses((data || []).filter((g) => g.classTeacherId === user.uid).map((g) => g.name)),
+    );
+
+    // Every class they teach, not just the first: a teacher with two classes was
+    // shown one class's assignments and told that was all of them.
+    const perClass = new Map<string, any[]>();
+    const unsubAssignments = assignedClasses.map((c) =>
+      firestoreService.getAssignments(c, (data) => {
+        perClass.set(c, data);
+        setAssignments([...perClass.values()].flat());
+      }),
+    );
+
+    const schedByClass = new Map<string, any[]>();
+    const unsubSchedules = assignedClasses.map((c) =>
+      firestoreService.getClassSchedule(c, (data) => {
+        schedByClass.set(c, (data || []).map((d: any) => ({ ...d, classId: c })));
+        setSchedule([...schedByClass.values()].flat());
+      }),
+    );
+
     const unsubAnnouncements = firestoreService.getAnnouncements('teachers', setAnnouncements);
     const unsubEvents = firestoreService.getEventsByAudience('teachers', setEvents);
 
     return () => {
       unsubStudents();
-      unsubAssignments();
-      unsubSchedule();
+      unsubGrades();
+      unsubAssignments.forEach((u) => u());
+      unsubSchedules.forEach((u) => u());
       unsubAnnouncements();
       unsubEvents();
     };
@@ -52,6 +77,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
 
   const firstName = (user?.name || 'there').split(' ')[0];
   const primaryClass = assignedClasses[0];
+  /** What this teacher actually is, from the class record rather than a guess. */
+  const roleLabel = formClasses.length
+    ? `Class teacher · ${formClasses.join(', ')}`
+    : assignedClasses.length
+      ? 'Subject teacher'
+      : 'Teacher';
 
   const calendarEvents: CalendarEvent[] = events
     .filter((e) => e?.date)
@@ -59,14 +90,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
 
   const aside = (
     <>
-      <ProfileCard name={user?.name || 'Teacher'} role={primaryClass ? `Class teacher · ${primaryClass}` : 'Teacher'} />
+      <ProfileCard name={user?.name || 'Teacher'} role={roleLabel} />
       <MiniCalendar events={calendarEvents} />
 
       <div className="flex flex-col gap-2.5">
         <SectionHeading>Today&rsquo;s schedule</SectionHeading>
         {schedule.length === 0 ? (
           <p className="text-[11.5px] text-slate-400 leading-relaxed">
-            Nothing scheduled for {primaryClass || 'your class'} today.
+            Nothing scheduled for {assignedClasses.length ? assignedClasses.join(' or ') : 'your classes'} today.
           </p>
         ) : (
           <div className="flex flex-col gap-[7px]">
@@ -123,7 +154,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
         subtitle={
           <span className="flex items-center gap-1.5">
             <Icon name="calendar_today" className="text-[14px]" />
-            {primaryClass ? `${primaryClass} · ` : ''}
+            {assignedClasses.length ? `${assignedClasses.join(' · ')} · ` : ''}
             {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
           </span>
         }
@@ -156,7 +187,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
           onClick={() => onNavigate(View.TEACHER_ASSIGNMENTS)}
         />
         <StatTile tint="mint" icon="schedule" label="Sessions today" value={schedule.length} badge={<Badge tone="mint">Today</Badge>} />
-        <StatTile tint="lilac" icon="analytics" label="Primary class" value={primaryClass || '—'} />
+        <StatTile
+          tint="lilac"
+          icon="analytics"
+          label={formClasses.length ? 'Class teacher of' : 'Classes taught'}
+          value={formClasses.length ? formClasses.join(', ') : assignedClasses.length ? String(assignedClasses.length) : '—'}
+        />
       </div>
 
       <SectionHeading
@@ -224,7 +260,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
         <EmptyState
           icon="assignment"
           title="No assignments yet"
-          body={`Anything you set for ${primaryClass || 'your class'} shows up here, with submissions as they come in.`}
+          body={`Anything you set for ${assignedClasses.length ? assignedClasses.join(' or ') : 'your classes'} shows up here, with submissions as they come in.`}
           action={
             <Button icon="add" onClick={() => onNavigate(View.TEACHER_ASSIGNMENTS)}>
               New assignment

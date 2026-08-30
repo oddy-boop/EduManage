@@ -123,6 +123,12 @@ function authenticate(req, res, next) {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    // Quiz tickets are signed with the same secret but are NOT sessions: they carry
+    // no role, so without this check one would sail through any authenticate-only
+    // route as a user with an undefined uid.
+    if (payload.typ && payload.typ !== 'user') {
+      return res.status(401).json({ error: 'This token cannot be used to access the portal.' });
+    }
     req.user = { uid: payload.uid, role: payload.role };
     next();
   } catch (err) {
@@ -139,6 +145,7 @@ function optionalAuthenticate(req, res, next) {
   if (!token) return next();
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    if (payload.typ && payload.typ !== 'user') return next();
     req.user = { uid: payload.uid, role: payload.role };
   } catch (err) {
     // ignore invalid/expired token for optional auth
@@ -190,6 +197,29 @@ async function assertTeacherAssignedToClass(req, classId) {
     err.statusCode = 403;
     throw err;
   }
+}
+
+/**
+ * Read access to a class's roster. Wider than assertTeacherAssignedToClass on
+ * purpose: the class teacher of a class must be able to list its students even when
+ * they teach none of its subjects, which is ordinary — a form teacher may take one
+ * subject elsewhere. Kept to READS; writing still requires a teaching assignment.
+ */
+async function assertTeacherMayReadClass(req, classId) {
+  if (req.user.role !== 'Teacher') return;
+  const result = await pool.query('SELECT assigned_classes FROM users WHERE uid = $1', [req.user.uid]);
+  const assigned = result.rows[0]?.assigned_classes || [];
+  if (assigned.includes(classId)) return;
+
+  const asClassTeacher = await pool.query('SELECT 1 FROM grade_configs WHERE name = $1 AND class_teacher_id = $2', [
+    classId,
+    req.user.uid,
+  ]);
+  if (asClassTeacher.rowCount > 0) return;
+
+  const err = new Error('You are not assigned to this class.');
+  err.statusCode = 403;
+  throw err;
 }
 
 async function assertStudentBelongsToClass(studentId, classId) {
@@ -284,6 +314,39 @@ async function startServer() {
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS total_score NUMERIC(5, 2);
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS grade VARCHAR(10);
       ALTER TABLE grade_configs ADD COLUMN IF NOT EXISTS class_teacher_id VARCHAR(255);
+
+      -- Date of birth replaces a stored age, which silently goes stale: a row
+      -- entered as 12 stays 12 forever. Age is derived from this on read.
+      ALTER TABLE students ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+      -- Staff contact details, captured at registration.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS contact VARCHAR(100);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+      -- A signature drawn once in the portal and reused on every report card.
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS signature TEXT;
+      -- When the assignment was set, as distinct from when it is due.
+      ALTER TABLE assignments ADD COLUMN IF NOT EXISTS date_set DATE DEFAULT CURRENT_DATE;
+      -- Who released a report, so their signature is the one that appears on it.
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS released_by VARCHAR(255);
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS signed_by VARCHAR(255);
+      -- How long a quiz runs. Was a hardcoded 15 minutes on the student screen, so
+      -- a five-question warm-up and an end-of-term test got the same clock.
+      ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS duration_minutes INT DEFAULT 15;
+
+      -- The class teacher's remark, saved as it is written rather than only at
+      -- finalize. Without this a term's worth of remarks lived in one browser tab
+      -- and vanished on refresh, and nothing could say which students still needed one.
+      CREATE TABLE IF NOT EXISTS class_remarks (
+        class_id VARCHAR(255) NOT NULL,
+        term VARCHAR(255) NOT NULL,
+        student_id VARCHAR(255) NOT NULL,
+        remark TEXT NOT NULL DEFAULT '',
+        author_id VARCHAR(255),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (class_id, term, student_id)
+      );
+      UPDATE quizzes SET duration_minutes = 15 WHERE duration_minutes IS NULL;
+      UPDATE assignments SET date_set = created_at::date WHERE date_set IS NULL;
       CREATE TABLE IF NOT EXISTS system_settings (
         key VARCHAR(100) PRIMARY KEY,
         value VARCHAR(255) NOT NULL
@@ -513,8 +576,8 @@ async function startServer() {
 
       // 8. Seed Assignments
       await pool.query(`
-        INSERT INTO assignments (id, class_id, title, description, due_date, teacher_id) VALUES
-        ('assign-1-id', 'Grade 10', 'Algebraic Formulations Homework', 'Complete problems 1 to 10 on page 42 of the textbook.', NOW() + INTERVAL '7 days', 'teacher-1-uid')
+        INSERT INTO assignments (id, class_id, title, description, due_date, teacher_id, date_set) VALUES
+        ('assign-1-id', 'Grade 10', 'Algebraic Formulations Homework', 'Complete problems 1 to 10 on page 42 of the textbook.', NOW() + INTERVAL '7 days', 'teacher-1-uid', CURRENT_DATE)
         ON CONFLICT (id) DO NOTHING;
       `);
 
@@ -673,12 +736,81 @@ async function startServer() {
         return res.status(401).json({ error: 'Current password is incorrect.' });
       }
 
+      if (await bcrypt.compare(newPassword, account.password)) {
+        return res.status(400).json({ error: 'The new password must be different from your current one.' });
+      }
+
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE uid = $2', [hashedPassword, uid]);
+
+      // Audited like an admin-issued reset: both change a credential, and a log that
+      // records only one of them cannot answer "who changed this account's password".
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_email, user_name, action, details, type, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomBytes(9).toString('base64url'),
+          uid,
+          account.email || '',
+          account.name || '',
+          'Password Changed',
+          `${account.name} changed their own password.`,
+          'security',
+        ]
+      );
+
       res.json({ success: true });
     } catch (err) {
       dbError(res, err);
     }
+  });
+
+  /**
+   * A signature is drawn once in the signer's own portal and reused on every report
+   * card they sign. Stored against the signer, never uploaded per report, so it
+   * cannot be attached to a document by anyone but its owner.
+   *
+   * Accepts a PNG data URI. Size is capped because this is inlined into report PDFs.
+   */
+  const MAX_SIGNATURE_BYTES = 200 * 1024;
+
+  app.put('/api/auth/signature', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
+    try {
+      const { signature } = req.body || {};
+      if (signature === null || signature === '') {
+        await pool.query('UPDATE users SET signature = NULL, updated_at = NOW() WHERE uid = $1', [req.user.uid]);
+        return res.json({ signature: null });
+      }
+      if (typeof signature !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signature)) {
+        return res.status(400).json({ error: 'A signature must be a PNG image.' });
+      }
+      if (signature.length > MAX_SIGNATURE_BYTES) {
+        return res.status(413).json({ error: 'That signature image is too large.' });
+      }
+      await pool.query('UPDATE users SET signature = $1, updated_at = NOW() WHERE uid = $2', [signature, req.user.uid]);
+
+      const actorRes = await pool.query('SELECT email, name FROM users WHERE uid = $1', [req.user.uid]);
+      const actor = actorRes.rows[0] || {};
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_email, user_name, action, details, type, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomBytes(9).toString('base64url'),
+          req.user.uid, actor.email || '', actor.name || '',
+          'Signature Updated',
+          `${actor.name} saved a new signature. It now appears on report cards they sign.`,
+          'security',
+        ]
+      );
+      res.json({ signature });
+    } catch (err) { dbError(res, err); }
+  });
+
+  app.get('/api/auth/signature', authenticate, async (req, res) => {
+    try {
+      const r = await pool.query('SELECT signature FROM users WHERE uid = $1', [req.user.uid]);
+      res.json({ signature: r.rows[0]?.signature || null });
+    } catch (err) { dbError(res, err); }
   });
 
   // USERS
@@ -721,7 +853,7 @@ async function startServer() {
   app.post('/api/users', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at } = snakeData;
+      const { uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, location, contact, date_of_birth } = snakeData;
 
       let temporaryPassword = null;
       let hashedPassword = null;
@@ -731,13 +863,15 @@ async function startServer() {
       }
 
       const queryStr = `
-        INSERT INTO users (uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, password)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        INSERT INTO users (uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, password, location, contact, date_of_birth)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (uid)
         DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, role = EXCLUDED.role, avatar = EXCLUDED.avatar,
                       assigned_classes = EXCLUDED.assigned_classes, qualification = EXCLUDED.qualification,
                       subjects = EXCLUDED.subjects, assigned_courses = EXCLUDED.assigned_courses,
-                      login_id = EXCLUDED.login_id, linked_at = EXCLUDED.linked_at, updated_at = NOW()
+                      login_id = EXCLUDED.login_id, linked_at = EXCLUDED.linked_at,
+                      location = EXCLUDED.location, contact = EXCLUDED.contact,
+                      date_of_birth = EXCLUDED.date_of_birth, updated_at = NOW()
         RETURNING *
       `;
       const params = [
@@ -748,7 +882,10 @@ async function startServer() {
         JSON.stringify(assigned_courses || []),
         login_id || null,
         linked_at || null,
-        hashedPassword
+        hashedPassword,
+        location || null,
+        contact || null,
+        date_of_birth || null
       ];
 
       const result = await pool.query(queryStr, params);
@@ -763,7 +900,7 @@ async function startServer() {
   app.put('/api/users/:uid', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at } = snakeData;
+      const { email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, location, contact, date_of_birth } = snakeData;
       const uid = req.params.uid;
 
       const existing = await pool.query('SELECT password FROM users WHERE uid = $1', [uid]);
@@ -776,13 +913,15 @@ async function startServer() {
       }
 
       const queryStr = `
-        INSERT INTO users (uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, password)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        INSERT INTO users (uid, email, name, role, avatar, assigned_classes, qualification, subjects, assigned_courses, login_id, linked_at, password, location, contact, date_of_birth)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (uid)
         DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, role = EXCLUDED.role, avatar = EXCLUDED.avatar,
                       assigned_classes = EXCLUDED.assigned_classes, qualification = EXCLUDED.qualification,
                       subjects = EXCLUDED.subjects, assigned_courses = EXCLUDED.assigned_courses,
-                      login_id = EXCLUDED.login_id, linked_at = EXCLUDED.linked_at, updated_at = NOW()
+                      login_id = EXCLUDED.login_id, linked_at = EXCLUDED.linked_at,
+                      location = EXCLUDED.location, contact = EXCLUDED.contact,
+                      date_of_birth = EXCLUDED.date_of_birth, updated_at = NOW()
         RETURNING *
       `;
       const params = [
@@ -793,7 +932,10 @@ async function startServer() {
         JSON.stringify(assigned_courses || []),
         login_id || null,
         linked_at || null,
-        hashedPassword
+        hashedPassword,
+        location || null,
+        contact || null,
+        date_of_birth || null
       ];
 
       const result = await pool.query(queryStr, params);
@@ -805,15 +947,47 @@ async function startServer() {
     }
   });
 
+  // Issues a new temporary password for a teacher or parent. Admin only. The plaintext
+  // is returned exactly once, in this response, and is never stored or recoverable.
   app.post('/api/users/:uid/reset-password', authenticate, requireRole('Admin'), async (req, res) => {
     try {
+      // Resetting your own password through the staff-reset route hands you a
+      // generated string you must then copy correctly or lose access to the only
+      // Admin account. There is no self-service password change to fall back on,
+      // so this route deliberately covers other people only.
+      if (req.params.uid === req.user.uid) {
+        return res.status(400).json({
+          error: 'This resets another person\'s password. To change your own, ask another administrator.',
+        });
+      }
+
       const temporaryPassword = generateTempPassword();
       const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
       const result = await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE uid = $2 RETURNING *', [hashedPassword, req.params.uid]);
       if (result.rowCount === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json({ ...stripPassword(rowToCamel(result.rows[0])), temporaryPassword });
+
+      // Logged by the server rather than the caller: a credential change must appear
+      // in the audit trail even if the browser closes before it can report it.
+      const target = result.rows[0];
+      const actorRes = await pool.query('SELECT email, name FROM users WHERE uid = $1', [req.user.uid]);
+      const actor = actorRes.rows[0] || {};
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_email, user_name, action, details, type, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomBytes(9).toString('base64url'),
+          req.user.uid,
+          actor.email || '',
+          actor.name || '',
+          'Password Reset',
+          `Issued a temporary password for ${target.name} (${target.role}${target.login_id ? `, ${target.login_id}` : ''}). Their previous password stopped working immediately.`,
+          'security',
+        ]
+      );
+
+      res.json({ ...stripPassword(rowToCamel(target)), temporaryPassword });
     } catch (err) {
       dbError(res, err);
     }
@@ -876,9 +1050,9 @@ async function startServer() {
           return res.status(403).json({ error: 'You do not have permission to view this roster.' });
         }
         if (req.user.role === 'Teacher') {
-          if (classId) await assertTeacherAssignedToClass(req, classId);
+          if (classId) await assertTeacherMayReadClass(req, classId);
           if (grades) {
-            for (const grade of grades.split(',')) await assertTeacherAssignedToClass(req, grade);
+            for (const grade of grades.split(',')) await assertTeacherMayReadClass(req, grade);
           }
         }
       } else if (req.user.role !== 'Admin') {
@@ -919,19 +1093,34 @@ async function startServer() {
     }
   }
 
+  /** Whole years between a date of birth and today. */
+  function ageFromDob(dob) {
+    const d = new Date(dob);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    let years = now.getFullYear() - d.getFullYear();
+    const before = now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate());
+    if (before) years -= 1;
+    return years >= 0 && years < 130 ? years : null;
+  }
+
   app.post('/api/students', authenticate, requireRole('Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { id, name, parent_id, class_id, grade, admission_number, age, parent_name, parent_contact, login_id } = snakeData;
+      const { id, name, parent_id, class_id, grade, admission_number, age, date_of_birth, parent_name, parent_contact, login_id } = snakeData;
       const studentId = id || crypto.randomBytes(9).toString('base64url');
       await assertValidParent(parent_id);
 
       const queryStr = `
-        INSERT INTO students (id, name, parent_id, class_id, grade, admission_number, age, parent_name, parent_contact, login_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO students (id, name, parent_id, class_id, grade, admission_number, age, date_of_birth, parent_name, parent_contact, login_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
       `;
-      const params = [studentId, name, parent_id || null, class_id || null, grade || null, admission_number || null, age ? parseInt(age) : null, parent_name || null, parent_contact || null, login_id || null];
+      // Age is stored too, but derived from the date of birth rather than typed, so
+      // the two can never disagree and the number never goes stale in the record.
+      const dob = date_of_birth || null;
+      const derivedAge = dob ? ageFromDob(dob) : (age ? parseInt(age) : null);
+      const params = [studentId, name, parent_id || null, class_id || null, grade || null, admission_number || null, derivedAge, dob, parent_name || null, parent_contact || null, login_id || null];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
@@ -943,20 +1132,25 @@ async function startServer() {
     try {
       const studentId = req.params.id;
       const snakeData = dataToSnake(req.body);
-      const { name, parent_id, class_id, grade, admission_number, age, parent_name, parent_contact, login_id } = snakeData;
+      const { name, parent_id, class_id, grade, admission_number, age, date_of_birth, parent_name, parent_contact, login_id } = snakeData;
       await assertValidParent(parent_id);
 
       const queryStr = `
-        INSERT INTO students (id, name, parent_id, class_id, grade, admission_number, age, parent_name, parent_contact, login_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO students (id, name, parent_id, class_id, grade, admission_number, age, date_of_birth, parent_name, parent_contact, login_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (id)
         DO UPDATE SET name = EXCLUDED.name, parent_id = EXCLUDED.parent_id, class_id = EXCLUDED.class_id,
                       grade = EXCLUDED.grade, admission_number = EXCLUDED.admission_number, age = EXCLUDED.age,
+                      date_of_birth = EXCLUDED.date_of_birth,
                       parent_name = EXCLUDED.parent_name, parent_contact = EXCLUDED.parent_contact, login_id = EXCLUDED.login_id,
                       updated_at = NOW()
         RETURNING *
       `;
-      const params = [studentId, name, parent_id || null, class_id || null, grade || null, admission_number || null, age ? parseInt(age) : null, parent_name || null, parent_contact || null, login_id || null];
+      // Age is stored too, but derived from the date of birth rather than typed, so
+      // the two can never disagree and the number never goes stale in the record.
+      const dob = date_of_birth || null;
+      const derivedAge = dob ? ageFromDob(dob) : (age ? parseInt(age) : null);
+      const params = [studentId, name, parent_id || null, class_id || null, grade || null, admission_number || null, derivedAge, dob, parent_name || null, parent_contact || null, login_id || null];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
@@ -1059,7 +1253,10 @@ async function startServer() {
       const snakeData = dataToSnake(req.body);
       const { student_id, parent_id, class_id, date, status } = snakeData;
 
-      await assertTeacherAssignedToClass(req, class_id);
+      // Marking the register is the class teacher's job, not every teacher who takes
+      // a lesson with the class. Previously any subject teacher assigned to the class
+      // could mark it, so two people could overwrite each other's register.
+      await assertClassTeacherOrAdmin(req, class_id);
       await assertStudentBelongsToClass(student_id, class_id);
 
       const queryStr = `
@@ -1165,15 +1362,16 @@ async function startServer() {
   });
 
   // QUIZZES
-  app.get('/api/quizzes', optionalAuthenticate, async (req, res) => {
+  // Staff only. This used to answer anonymous callers with every published quiz in
+  // the school, which handed the full question list of every class to anyone who
+  // knew the URL. Students now reach exactly one quiz, through /api/quiz/join.
+  app.get('/api/quizzes', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const { teacherId, classId } = req.query;
       let queryStr = 'SELECT * FROM quizzes';
       const params = [];
       const conditions = [];
-      if (!req.user) {
-        conditions.push('is_published = TRUE');
-      } else if (req.user.role === 'Teacher') {
+      if (req.user.role === 'Teacher') {
         conditions.push(`teacher_id = $${params.length + 1}`);
         params.push(req.user.uid);
       }
@@ -1193,22 +1391,96 @@ async function startServer() {
     }
   });
 
+  // A student joins a quiz from the link their teacher shared. This is the only
+  // door into a quiz for someone with no portal account, so it is where identity
+  // and class membership get checked — not on the client, which a student controls.
+  //
+  // Success mints a short-lived QUIZ TICKET naming the quiz and the student. The
+  // submit route trusts that ticket and nothing in the request body, which is what
+  // stops a student sitting a quiz as somebody else.
+  const QUIZ_TICKET_TTL = '3h';
+
+  app.post('/api/quiz/join', async (req, res) => {
+    try {
+      const { quizId, loginId } = req.body || {};
+      if (!quizId || !loginId || !String(loginId).trim()) {
+        return res.status(400).json({ error: 'A quiz and a student ID are required.' });
+      }
+
+      const quizRes = await pool.query('SELECT * FROM quizzes WHERE id = $1', [quizId]);
+      if (quizRes.rowCount === 0) {
+        return res.status(404).json({ error: 'That quiz link is not valid. Check the link your teacher shared.' });
+      }
+      const quiz = quizRes.rows[0];
+      if (!quiz.is_published) {
+        return res.status(403).json({ error: 'This quiz is not open yet. Your teacher still has it as a draft.' });
+      }
+
+      const studentRes = await pool.query(
+        'SELECT id, name, class_id, login_id FROM students WHERE LOWER(login_id) = LOWER($1)',
+        [String(loginId).trim()]
+      );
+      if (studentRes.rowCount === 0) {
+        return res.status(404).json({ error: 'We could not find that student ID. Check it and try again.' });
+      }
+      const student = studentRes.rows[0];
+
+      // The rule the teacher asked for: this quiz belongs to one class, and only
+      // students registered in that class may sit it.
+      if (!quiz.class_id || !student.class_id || quiz.class_id !== student.class_id) {
+        return res.status(403).json({
+          error: `This quiz is for ${quiz.class_id || 'another class'}, and you are registered in ${student.class_id || 'no class'}. Ask your teacher if this is wrong.`,
+          code: 'wrong_class',
+        });
+      }
+
+      const existing = await pool.query(
+        'SELECT id FROM quiz_results WHERE quiz_id = $1 AND student_id = $2',
+        [quizId, student.id]
+      );
+      if (existing.rowCount > 0) {
+        return res.status(409).json({
+          error: 'You have already sat this quiz. Ask your teacher if you need another attempt.',
+          code: 'already_submitted',
+        });
+      }
+
+      const ticket = jwt.sign(
+        { typ: 'quiz', quizId, studentId: student.id, name: student.name },
+        JWT_SECRET,
+        { expiresIn: QUIZ_TICKET_TTL }
+      );
+
+      res.json({
+        ticket,
+        student: { id: student.id, name: student.name, classId: student.class_id },
+        quiz: sanitizeQuizForViewer(rowToCamel(quiz), req),
+      });
+    } catch (err) {
+      dbError(res, err);
+    }
+  });
+
   app.post('/api/quizzes', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { id, title, description, questions, is_published, class_id } = snakeData;
+      const { id, title, description, questions, is_published, class_id, duration_minutes } = snakeData;
       const quizId = id || crypto.randomBytes(9).toString('base64url');
       if (!class_id) return res.status(400).json({ error: 'classId is required.' });
       await assertTeacherAssignedToClass(req, class_id);
       // Teachers can only ever author quizzes as themselves; only Admin may assign a different teacher_id.
       const teacherId = req.user.role === 'Teacher' ? req.user.uid : (snakeData.teacher_id || req.user.uid);
 
+      // Clamped rather than trusted: a zero or negative clock would expire the moment
+      // a student opened the paper, and the cap keeps a typo from setting a week-long quiz.
+      const minutes = Math.min(300, Math.max(1, parseInt(duration_minutes, 10) || 15));
+
       const queryStr = `
-        INSERT INTO quizzes (id, teacher_id, title, description, questions, is_published, class_id)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+        INSERT INTO quizzes (id, teacher_id, title, description, questions, is_published, class_id, duration_minutes)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
         RETURNING *
       `;
-      const params = [quizId, teacherId, title, description || null, JSON.stringify(questions || []), is_published || false, class_id];
+      const params = [quizId, teacherId, title, description || null, JSON.stringify(questions || []), is_published || false, class_id, minutes];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
@@ -1237,6 +1509,10 @@ async function startServer() {
       await assertQuizOwnership(req);
       const snakeData = dataToSnake(req.body);
       delete snakeData.teacher_id; // ownership can't be reassigned via edit
+      if ('duration_minutes' in snakeData) {
+        // Same clamp as on create, so an edit cannot smuggle in a zero-minute quiz.
+        snakeData.duration_minutes = Math.min(300, Math.max(1, parseInt(snakeData.duration_minutes, 10) || 15));
+      }
       const keys = Object.keys(snakeData);
       if (keys.length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
@@ -1262,14 +1538,35 @@ async function startServer() {
   });
 
   // QUIZ RESULTS
-  // Submission is intentionally public/unauthenticated (mirrors GET /api/quizzes): students take
-  // quizzes via a shared link/QR code without a school-portal login. The server recomputes the
-  // score itself from the quiz's correctAnswer values rather than trusting a client-submitted score.
+  // Open to students without a portal account, but not anonymous: the caller must
+  // present the quiz ticket minted by /api/quiz/join, which already proved the
+  // student ID exists and belongs to this quiz's class. The server recomputes the
+  // score from the quiz's own correctAnswer values rather than trusting the client.
   app.post('/api/quizResults', async (req, res) => {
     try {
-      const { quizId, studentId, studentName, answers } = req.body;
-      if (!quizId || !studentId || !answers) {
-        return res.status(400).json({ error: 'quizId, studentId, and answers are required.' });
+      // Identity comes from the quiz ticket issued at join time, never from the body.
+      // Previously any caller could POST a result naming any student on any quiz.
+      const authHeader = req.headers.authorization || '';
+      const raw = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      if (!raw) {
+        return res.status(401).json({ error: 'Join the quiz through your teacher\'s link before submitting.' });
+      }
+      let ticket;
+      try {
+        ticket = jwt.verify(raw, JWT_SECRET);
+      } catch {
+        return res.status(401).json({ error: 'Your quiz session has expired. Open the link again.', code: 'ticket_expired' });
+      }
+      if (ticket.typ !== 'quiz' || !ticket.quizId || !ticket.studentId) {
+        return res.status(401).json({ error: 'That is not a valid quiz session.' });
+      }
+
+      const { answers } = req.body || {};
+      const quizId = ticket.quizId;
+      const studentId = ticket.studentId;
+      const studentName = ticket.name;
+      if (!answers) {
+        return res.status(400).json({ error: 'answers are required.' });
       }
       const quizRes = await pool.query('SELECT * FROM quizzes WHERE id = $1', [quizId]);
       if (quizRes.rowCount === 0) {
@@ -1483,10 +1780,23 @@ async function startServer() {
   // REPORTS
   app.get('/api/reports', authenticate, async (req, res) => {
     try {
-      const { studentId, parentId, status } = req.query;
+      const { studentId, parentId, status, classId, term } = req.query;
 
       if (req.user.role !== 'Admin') {
-        if (!(studentId && parentId && req.user.role === 'Parent' && req.user.uid === parentId)) {
+        const parentReadingOwn = studentId && parentId && req.user.role === 'Parent' && req.user.uid === parentId;
+
+        // A class teacher may list the cards for their own class — they assembled
+        // them and need to open or download one to check it.
+        let classTeacherReadingOwnClass = false;
+        if (req.user.role === 'Teacher' && classId) {
+          const ct = await pool.query('SELECT 1 FROM grade_configs WHERE name = $1 AND class_teacher_id = $2', [
+            classId,
+            req.user.uid,
+          ]);
+          classTeacherReadingOwnClass = ct.rowCount > 0;
+        }
+
+        if (!parentReadingOwn && !classTeacherReadingOwnClass) {
           return res.status(403).json({ error: 'You do not have permission to view these reports.' });
         }
       }
@@ -1514,7 +1824,17 @@ async function startServer() {
         conditions.push(`r.status = $${paramCount++}`);
         params.push(status);
       }
-      
+
+      if (classId) {
+        conditions.push(`s.class_id = $${paramCount++}`);
+        params.push(classId);
+      }
+
+      if (term) {
+        conditions.push(`r.term = $${paramCount++}`);
+        params.push(term);
+      }
+
       if (conditions.length > 0) {
         queryStr += ' WHERE ' + conditions.join(' AND ');
       }
@@ -1561,11 +1881,17 @@ async function startServer() {
         return `"${key}" = $${i + 2}`;
       }).join(', ');
       
-      const queryStr = `UPDATE reports SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`;
+      // Releasing a report is a signing act: record who did it, so the signature
+      // printed on the card belongs to the person who actually approved it rather
+      // than to whichever administrator happens to exist.
+      const releasing = snakeData.status === 'published' || snakeData.status === 'approved';
+      const extra = releasing ? ', released_by = $' + (keys.length + 2) : '';
+      const queryStr = `UPDATE reports SET ${setClause}${extra}, updated_at = NOW() WHERE id = $1 RETURNING *`;
       const params = [
         req.params.id,
         ...keys.map(k => k === 'grades' ? JSON.stringify(snakeData[k]) : snakeData[k])
       ];
+      if (releasing) params.push(req.user.uid);
       
       const result = await pool.query(queryStr, params);
       if (result.rowCount === 0) {
@@ -1623,13 +1949,31 @@ async function startServer() {
   // a simple average of (score/maxScore) across entries, scaled to caMax (default 40).
   app.get('/api/assessments/summary', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
-      const { studentId, classId, term, caMax } = req.query;
+      const { studentId, classId, term, caMax, subject } = req.query;
       if (!studentId || !classId || !term) {
         return res.status(400).json({ error: 'studentId, classId, and term are required.' });
       }
+
+      // Scoped to the asking teacher, and to the subject when one is given.
+      // Previously this averaged EVERY assessment for the student in that class,
+      // so the Science teacher's CA column silently included the Maths teacher's
+      // class work — one subject's continuous assessment leaking into another's.
+      const conditions = ['student_id = $1', 'class_id = $2', 'term = $3'];
+      const params = [studentId, classId, term];
+      if (req.user.role === 'Teacher') {
+        params.push(req.user.uid);
+        conditions.push(`teacher_id = $${params.length}`);
+      }
+      if (subject) {
+        // Entries recorded before the Assessment Book tagged a subject have NULL and
+        // are still counted: excluding them would drop every existing CA to zero.
+        params.push(subject);
+        conditions.push(`(subject IS NULL OR LOWER(subject) = LOWER($${params.length}))`);
+      }
+
       const result = await pool.query(
-        'SELECT score, max_score FROM assessments WHERE student_id = $1 AND class_id = $2 AND term = $3',
-        [studentId, classId, term]
+        `SELECT score, max_score FROM assessments WHERE ${conditions.join(' AND ')}`,
+        params
       );
       const entries = result.rows;
       const max = caMax ? parseFloat(caMax) : 40;
@@ -1715,7 +2059,10 @@ async function startServer() {
       }
       const conditions = ['class_id = $1', 'term = $2'];
       const params = [classId, term];
-      if (subject) { params.push(subject); conditions.push(`subject = $${params.length}`); }
+      // Case-insensitive: renaming a subject in the catalogue from "Mathematics" to
+      // "MATHEMATICS" must not orphan the marks already entered under the old
+      // spelling, nor start a parallel second subject with the same name.
+      if (subject) { params.push(subject); conditions.push(`LOWER(subject) = LOWER($${params.length})`); }
       if (studentId) { params.push(studentId); conditions.push(`student_id = $${params.length}`); }
 
       if (req.user.role === 'Teacher') {
@@ -1745,12 +2092,18 @@ async function startServer() {
       }
       const teacherId = req.user.role === 'Teacher' ? req.user.uid : (snakeData.teacher_id || req.user.uid);
 
-      const existing = await pool.query('SELECT * FROM subject_reports WHERE student_id = $1 AND subject = $2 AND term = $3', [student_id, subject, term]);
+      const existing = await pool.query(
+        'SELECT * FROM subject_reports WHERE student_id = $1 AND LOWER(subject) = LOWER($2) AND term = $3',
+        [student_id, subject, term]
+      );
       if (existing.rowCount > 0 && existing.rows[0].status === 'submitted' && req.user.role !== 'Admin') {
         return res.status(409).json({ error: 'This subject has already been submitted for this student/term. Ask an Admin to reopen it if it needs correction.' });
       }
 
       const id = existing.rowCount > 0 ? existing.rows[0].id : crypto.randomBytes(9).toString('base64url');
+      // The row's own spelling wins: the UNIQUE key is (student_id, subject, term),
+      // so writing a differently-cased name would insert a duplicate rather than update.
+      const subjectName = existing.rowCount > 0 ? existing.rows[0].subject : subject;
       const queryStr = `
         INSERT INTO subject_reports (id, student_id, teacher_id, class_id, term, subject, ca_score, exam_score, remarks, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
@@ -1759,7 +2112,7 @@ async function startServer() {
                       teacher_id = EXCLUDED.teacher_id, class_id = EXCLUDED.class_id, updated_at = NOW()
         RETURNING *
       `;
-      const params = [id, student_id, teacherId, class_id, term, subject, ca_score || 0, exam_score || 0, remarks || null];
+      const params = [id, student_id, teacherId, class_id, term, subjectName, ca_score || 0, exam_score || 0, remarks || null];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
@@ -1773,7 +2126,7 @@ async function startServer() {
       if (!classId || !subject || !term) {
         return res.status(400).json({ error: 'classId, subject, and term are required.' });
       }
-      const conditions = ['class_id = $1', 'subject = $2', 'term = $3'];
+      const conditions = ['class_id = $1', 'LOWER(subject) = LOWER($2)', 'term = $3'];
       const params = [classId, subject, term];
       if (req.user.role === 'Teacher') {
         params.push(req.user.uid);
@@ -1815,7 +2168,7 @@ async function startServer() {
     const subjects = [];
     for (const subject of expectedSubjects) {
       const submittedRes = await pool.query(
-        "SELECT COUNT(DISTINCT student_id)::int AS count FROM subject_reports WHERE class_id = $1 AND term = $2 AND subject = $3 AND status = 'submitted'",
+        "SELECT COUNT(DISTINCT student_id)::int AS count FROM subject_reports WHERE class_id = $1 AND term = $2 AND LOWER(subject) = LOWER($3) AND status = 'submitted'",
         [classId, term, subject]
       );
       const submittedCount = submittedRes.rows[0].count;
@@ -1827,6 +2180,78 @@ async function startServer() {
 
   // Which subjects are complete (every enrolled student has a submitted entry) for a class+term —
   // the Class Teacher can't finalize until every subject shows complete: true.
+  // The signatures that belong on ONE report, for the on-screen card. Kept out of the
+  // report list responses because each image is several KB and a list would carry
+  // dozens of copies. Same access rule as the PDF: a parent may only see their own
+  // child's, and only once released.
+  app.get('/api/reports/:id/signatures', authenticate, async (req, res) => {
+    try {
+      const r = await pool.query('SELECT parent_id, status, signed_by, released_by FROM reports WHERE id = $1', [req.params.id]);
+      if (r.rowCount === 0) return res.status(404).json({ error: 'Report not found.' });
+      const row = r.rows[0];
+
+      if (req.user.role !== 'Admin' && req.user.role !== 'Teacher') {
+        if (req.user.role !== 'Parent' || row.parent_id !== req.user.uid) {
+          return res.status(403).json({ error: 'You do not have permission to view this report.' });
+        }
+        if (row.status !== 'published') {
+          return res.status(403).json({ error: 'This report has not been released yet.' });
+        }
+      }
+
+      const ids = [row.signed_by, row.released_by].filter(Boolean);
+      if (ids.length === 0) return res.json({ classTeacher: null, headTeacher: null });
+      const users = await pool.query('SELECT uid, name, signature FROM users WHERE uid = ANY($1::varchar[])', [ids]);
+      const byUid = Object.fromEntries(users.rows.map(u => [u.uid, u]));
+      res.json({
+        classTeacher: byUid[row.signed_by]?.signature || null,
+        classTeacherName: byUid[row.signed_by]?.name || null,
+        headTeacher: byUid[row.released_by]?.signature || null,
+        headTeacherName: byUid[row.released_by]?.name || null,
+      });
+    } catch (err) { dbError(res, err); }
+  });
+
+  /** Class size and attendance for one report, for the on-screen card. Same access rule as the PDF. */
+  app.get('/api/reports/:id/context', authenticate, async (req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT r.parent_id, r.status, r.student_id, s.class_id
+         FROM reports r LEFT JOIN students s ON s.id = r.student_id WHERE r.id = $1`,
+        [req.params.id]
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: 'Report not found.' });
+      const row = r.rows[0];
+
+      if (req.user.role !== 'Admin') {
+        let allowed = false;
+        if (req.user.role === 'Teacher' && row.class_id) {
+          const ct = await pool.query('SELECT 1 FROM grade_configs WHERE name = $1 AND class_teacher_id = $2', [row.class_id, req.user.uid]);
+          allowed = ct.rowCount > 0;
+        }
+        if (!allowed) {
+          if (req.user.role !== 'Parent' || row.parent_id !== req.user.uid) {
+            return res.status(403).json({ error: 'You do not have permission to view this report.' });
+          }
+          if (row.status !== 'published') {
+            return res.status(403).json({ error: 'This report has not been released yet.' });
+          }
+        }
+      }
+
+      const sizeRes = row.class_id
+        ? await pool.query('SELECT COUNT(*)::int AS n FROM students WHERE class_id = $1', [row.class_id])
+        : { rows: [{ n: 0 }] };
+      const attRes = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE LOWER(status) <> 'absent')::int AS present
+         FROM attendance WHERE student_id = $1`,
+        [row.student_id]
+      );
+      res.json({ classSize: sizeRes.rows[0].n, attendance: attRes.rows[0] });
+    } catch (err) { dbError(res, err); }
+  });
+
   // A released report card as a real PDF file.
   //
   // The browser print path still exists as a fallback, but it depends on the
@@ -1843,13 +2268,27 @@ async function startServer() {
       if (result.rowCount === 0) return res.status(404).json({ error: 'Report not found.' });
       const row = result.rows[0];
 
-      // A parent may only download their own child's, and only once released.
+      // Admin: anything. Class teacher: any card for their own class, at any stage —
+      // they assembled it and need to check it before and after release. Parent: only
+      // their own child's, and only once released.
       if (req.user.role !== 'Admin') {
-        if (req.user.role !== 'Parent' || row.parent_id !== req.user.uid) {
-          return res.status(403).json({ error: 'You do not have permission to download this report.' });
+        let allowed = false;
+
+        if (req.user.role === 'Teacher' && row.class_id) {
+          const ct = await pool.query('SELECT 1 FROM grade_configs WHERE name = $1 AND class_teacher_id = $2', [
+            row.class_id,
+            req.user.uid,
+          ]);
+          allowed = ct.rowCount > 0;
         }
-        if (row.status !== 'published') {
-          return res.status(403).json({ error: 'This report has not been released yet.' });
+
+        if (!allowed) {
+          if (req.user.role !== 'Parent' || row.parent_id !== req.user.uid) {
+            return res.status(403).json({ error: 'You do not have permission to download this report.' });
+          }
+          if (row.status !== 'published') {
+            return res.status(403).json({ error: 'This report has not been released yet.' });
+          }
         }
       }
 
@@ -1858,6 +2297,34 @@ async function startServer() {
         "SELECT key, value FROM system_settings WHERE key IN ('school_name','school_address','school_phone','school_email')"
       );
       const school = Object.fromEntries(settingsRes.rows.map(r => [r.key, r.value]));
+
+      // Signatures belong to the people who actually signed THIS report: the class
+      // teacher who finalized it and the administrator who released it.
+      const signerRes = await pool.query(
+        'SELECT uid, name, signature FROM users WHERE uid = ANY($1::varchar[])',
+        [[row.signed_by, row.released_by].filter(Boolean)]
+      );
+      const byUid = Object.fromEntries(signerRes.rows.map(r => [r.uid, r]));
+      const signedBy = byUid[row.signed_by];
+      const releasedBy = byUid[row.released_by];
+      const signatures = {
+        classTeacher: signedBy?.signature || null,
+        classTeacherName: signedBy?.name || null,
+        headTeacher: releasedBy?.signature || null,
+        headTeacherName: releasedBy?.name || null,
+      };
+
+      // Context a report card is expected to carry: how big the class is, and how
+      // often the child was actually in school.
+      const classSizeRes = row.class_id
+        ? await pool.query('SELECT COUNT(*)::int AS n FROM students WHERE class_id = $1', [row.class_id])
+        : { rows: [{ n: 0 }] };
+      const attendanceRes = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE LOWER(status) <> 'absent')::int AS present
+         FROM attendance WHERE student_id = $1`,
+        [row.student_id]
+      );
 
       const report = rowToCamel(row);
       const student = {
@@ -1878,6 +2345,9 @@ async function startServer() {
         caMax: scale.caMax,
         examMax: scale.examMax,
         school,
+        signatures,
+        classSize: classSizeRes.rows[0].n,
+        attendance: attendanceRes.rows[0],
       });
       doc.pipe(res);
     } catch (err) { dbError(res, err); }
@@ -2058,6 +2528,116 @@ async function startServer() {
     }
   });
 
+  // The class teacher's draft remarks for a class+term. Read and written by the
+  // class teacher for that class (or an Admin) — the same rule that guards finalize.
+  app.get('/api/classRemarks', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
+    try {
+      const { classId, term } = req.query;
+      if (!classId || !term) return res.status(400).json({ error: 'classId and term are required.' });
+      await assertClassTeacherOrAdmin(req, classId);
+      const r = await pool.query(
+        'SELECT student_id, remark, updated_at FROM class_remarks WHERE class_id = $1 AND term = $2',
+        [classId, term]
+      );
+      res.json(r.rows.map(rowToCamel));
+    } catch (err) { dbError(res, err); }
+  });
+
+  app.put('/api/classRemarks', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
+    try {
+      const { classId, term, studentId, remark } = req.body || {};
+      if (!classId || !term || !studentId) {
+        return res.status(400).json({ error: 'classId, term and studentId are required.' });
+      }
+      await assertClassTeacherOrAdmin(req, classId);
+
+      const text = String(remark ?? '').trim();
+      if (text === '') {
+        // An emptied remark is a removal, so "has a remark" stays truthful.
+        await pool.query('DELETE FROM class_remarks WHERE class_id = $1 AND term = $2 AND student_id = $3', [classId, term, studentId]);
+        return res.json({ studentId, remark: '' });
+      }
+      const r = await pool.query(
+        `INSERT INTO class_remarks (class_id, term, student_id, remark, author_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (class_id, term, student_id)
+         DO UPDATE SET remark = EXCLUDED.remark, author_id = EXCLUDED.author_id, updated_at = NOW()
+         RETURNING student_id, remark, updated_at`,
+        [classId, term, studentId, text, req.user.uid]
+      );
+      res.json(rowToCamel(r.rows[0]));
+    } catch (err) { dbError(res, err); }
+  });
+
+  /**
+   * Reopen submitted subject marks so the teacher can correct them.
+   *
+   * The app told teachers in three places to "ask an Admin to reopen it" while no
+   * such action existed, so a mistyped mark was permanent. Admin only: the whole
+   * point of submitting is that a teacher cannot quietly revise a sealed mark.
+   */
+  app.post('/api/subjectReports/reopen', authenticate, requireRole('Admin'), async (req, res) => {
+    try {
+      const { classId, subject, term, studentId } = req.body || {};
+      if (!classId || !term) {
+        return res.status(400).json({ error: 'classId and term are required.' });
+      }
+
+      const conditions = ['class_id = $1', 'term = $2', "status = 'submitted'"];
+      const params = [classId, term];
+      if (subject) { params.push(subject); conditions.push(`LOWER(subject) = LOWER($${params.length})`); }
+      if (studentId) { params.push(studentId); conditions.push(`student_id = $${params.length}`); }
+
+      const result = await pool.query(
+        `UPDATE subject_reports SET status = 'draft', submitted_at = NULL, updated_at = NOW()
+         WHERE ${conditions.join(' AND ')} RETURNING *`,
+        params
+      );
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: 'Nothing matching that is currently submitted.' });
+      }
+
+      const actorRes = await pool.query('SELECT email, name FROM users WHERE uid = $1', [req.user.uid]);
+      const actor = actorRes.rows[0] || {};
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_email, user_name, action, details, type, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomBytes(9).toString('base64url'),
+          req.user.uid, actor.email || '', actor.name || '',
+          'Marks Reopened',
+          `Reopened ${result.rowCount} submitted entr${result.rowCount === 1 ? 'y' : 'ies'} for ` +
+            `${subject || 'all subjects'} in ${classId} (${term}). The teacher can edit them again.`,
+          'security',
+        ]
+      );
+
+      res.json({ reopenedCount: result.rowCount, entries: result.rows.map(rowToCamel) });
+    } catch (err) { dbError(res, err); }
+  });
+
+  /** Which subjects are currently locked for a class+term, for the admin's reopen list. */
+  app.get('/api/subjectReports/locked', authenticate, requireRole('Admin'), async (req, res) => {
+    try {
+      const { term } = req.query;
+      const params = [];
+      let where = "WHERE sr.status = 'submitted'";
+      if (term) { params.push(term); where += ` AND sr.term = $${params.length}`; }
+      const r = await pool.query(
+        `SELECT sr.class_id, sr.subject, sr.term, COUNT(*)::int AS entry_count,
+                MAX(sr.submitted_at) AS last_submitted,
+                MIN(u.name) AS teacher_name
+         FROM subject_reports sr
+         LEFT JOIN users u ON u.uid = sr.teacher_id
+         ${where}
+         GROUP BY sr.class_id, sr.subject, sr.term
+         ORDER BY sr.class_id, sr.subject`,
+        params
+      );
+      res.json(r.rows.map(rowToCamel));
+    } catch (err) { dbError(res, err); }
+  });
+
   // FINALIZE: Class Teacher merges every submitted subject into one report card per student and
   // sends it to Admin for approval.
   app.post('/api/reports/finalize', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
@@ -2067,6 +2647,17 @@ async function startServer() {
         return res.status(400).json({ error: 'classId and term are required.' });
       }
       await assertClassTeacherOrAdmin(req, classId);
+
+      // Saved remarks are the source of truth; anything the client sends is only an
+      // override for remarks typed but not yet saved when Finalize was pressed.
+      const savedRemarks = await pool.query(
+        'SELECT student_id, remark FROM class_remarks WHERE class_id = $1 AND term = $2',
+        [classId, term]
+      );
+      const remarkFor = Object.fromEntries(savedRemarks.rows.map(r => [r.student_id, r.remark]));
+      Object.entries(remarks || {}).forEach(([sid, text]) => {
+        if (String(text ?? '').trim() !== '') remarkFor[sid] = String(text).trim();
+      });
 
       const mergeStatus = await computeMergeStatus(classId, term);
       if (mergeStatus.totalStudents === 0) {
@@ -2103,22 +2694,23 @@ async function startServer() {
           totalSum += total;
         });
         const avgTotal = Math.round((totalSum / subjectEntries.length) * 100) / 100;
-        const comments = (remarks && remarks[student.id]) || '';
+        const comments = remarkFor[student.id] || '';
 
         const existingReport = await pool.query('SELECT id FROM reports WHERE student_id = $1 AND term = $2', [student.id, term]);
         let reportRow;
         if (existingReport.rowCount > 0) {
           const updateRes = await pool.query(
-            `UPDATE reports SET grades = $1::jsonb, total_score = $2, grade = $3, comments = $4, status = 'pending', updated_at = NOW() WHERE id = $5 RETURNING *`,
-            [JSON.stringify(grades), avgTotal, await calculateGrade(pool, avgTotal), comments, existingReport.rows[0].id]
+            `UPDATE reports SET grades = $1::jsonb, total_score = $2, grade = $3, comments = $4, status = 'pending',
+                                signed_by = $6, updated_at = NOW() WHERE id = $5 RETURNING *`,
+            [JSON.stringify(grades), avgTotal, await calculateGrade(pool, avgTotal), comments, existingReport.rows[0].id, req.user.uid]
           );
           reportRow = updateRes.rows[0];
         } else {
           const reportId = crypto.randomBytes(9).toString('base64url');
           const insertRes = await pool.query(
-            `INSERT INTO reports (id, student_id, parent_id, term, grades, total_score, grade, comments, status)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, 'pending') RETURNING *`,
-            [reportId, student.id, student.parent_id || null, term, JSON.stringify(grades), avgTotal, await calculateGrade(pool, avgTotal), comments]
+            `INSERT INTO reports (id, student_id, parent_id, term, grades, total_score, grade, comments, status, signed_by)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, 'pending', $9) RETURNING *`,
+            [reportId, student.id, student.parent_id || null, term, JSON.stringify(grades), avgTotal, await calculateGrade(pool, avgTotal), comments, req.user.uid]
           );
           reportRow = insertRes.rows[0];
         }
@@ -2158,7 +2750,10 @@ async function startServer() {
     try {
       const snakeData = dataToSnake(req.body);
       const { id, class_id, day, subjects } = snakeData;
-      await assertTeacherAssignedToClass(req, class_id);
+      // A class's timetable covers every subject taught in it, so it belongs to the
+      // class teacher. A subject teacher rewriting it would be editing other
+      // teachers' lessons.
+      await assertClassTeacherOrAdmin(req, class_id);
       const scheduleId = id || crypto.randomBytes(9).toString('base64url');
 
       const queryStr = `
@@ -2241,17 +2836,19 @@ async function startServer() {
   app.post('/api/assignments', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
     try {
       const snakeData = dataToSnake(req.body);
-      const { id, class_id, title, description, due_date } = snakeData;
+      const { id, class_id, title, description, due_date, date_set } = snakeData;
       await assertTeacherAssignedToClass(req, class_id);
       const assignmentId = id || Math.random().toString(36).substring(2, 15);
       const teacherId = req.user.role === 'Teacher' ? req.user.uid : null;
-      
+
       const queryStr = `
-        INSERT INTO assignments (id, class_id, title, description, due_date, teacher_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO assignments (id, class_id, title, description, due_date, teacher_id, date_set)
+        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::date, CURRENT_DATE))
         RETURNING *
       `;
-      const params = [assignmentId, class_id, title, description || null, due_date, teacherId];
+      // Defaults to today on the server, so the date an assignment was set does not
+      // depend on the clock of whichever device the teacher happened to use.
+      const params = [assignmentId, class_id, title, description || null, due_date, teacherId, date_set || null];
       const result = await pool.query(queryStr, params);
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
@@ -2495,14 +3092,29 @@ async function startServer() {
   // BATCH PROMOTION
   app.post('/api/students/promote', authenticate, requireRole('Admin'), async (req, res) => {
     try {
-      const { fromClass, toClass } = req.body;
-      if (!fromClass || !toClass) {
-        return res.status(400).json({ error: 'fromClass and toClass are required parameters.' });
+      const { fromClass, toClass, studentIds } = req.body;
+      if (!toClass) {
+        return res.status(400).json({ error: 'toClass is required.' });
       }
-      const result = await pool.query(
-        'UPDATE students SET class_id = $1, grade = $1 WHERE class_id = $2 RETURNING *',
-        [toClass, fromClass]
-      );
+
+      // Two modes. Whole-class keeps the original behaviour. A studentIds list moves
+      // only those students, which is what makes "these three repeat the year while
+      // the rest go up" possible without editing each record by hand.
+      let result;
+      if (Array.isArray(studentIds) && studentIds.length > 0) {
+        result = await pool.query(
+          'UPDATE students SET class_id = $1, grade = $1, updated_at = NOW() WHERE id = ANY($2::varchar[]) RETURNING *',
+          [toClass, studentIds]
+        );
+      } else {
+        if (!fromClass) {
+          return res.status(400).json({ error: 'fromClass is required when no students are picked.' });
+        }
+        result = await pool.query(
+          'UPDATE students SET class_id = $1, grade = $1, updated_at = NOW() WHERE class_id = $2 RETURNING *',
+          [toClass, fromClass]
+        );
+      }
       res.json({ promotedCount: result.rowCount, students: result.rows.map(rowToCamel) });
     } catch (err) {
       dbError(res, err);

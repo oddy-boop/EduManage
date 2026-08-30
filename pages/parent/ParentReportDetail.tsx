@@ -39,9 +39,52 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
   const [downloading, setDownloading] = React.useState(false);
   const [downloadError, setDownloadError] = React.useState<string | null>(null);
 
+  // The same signatures the PDF prints. Without this the on-screen card showed blank
+  // rules while the downloaded copy was signed — two versions of one document.
+  const [signatures, setSignatures] = React.useState<{
+    classTeacher: string | null;
+    classTeacherName?: string | null;
+    headTeacher: string | null;
+    headTeacherName?: string | null;
+  } | null>(null);
+
   React.useEffect(() => {
     firestoreService.getSystemSettings().then(setSchool).catch(() => setSchool({}));
   }, []);
+
+  const [context, setContext] = React.useState<{ classSize: number; attendance: { present: number; total: number } } | null>(null);
+
+  React.useEffect(() => {
+    if (!report?.id) return;
+    let cancelled = false;
+    firestoreService
+      .getReportContext(report.id)
+      .then((c) => {
+        if (!cancelled) setContext(c);
+      })
+      .catch(() => {
+        /* Context is extra detail; the card still reads without it. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [report?.id]);
+
+  React.useEffect(() => {
+    if (!report?.id) return;
+    let cancelled = false;
+    firestoreService
+      .getReportSignatures(report.id)
+      .then((s) => {
+        if (!cancelled) setSignatures(s);
+      })
+      .catch(() => {
+        /* A missing signature is a blank line, not a broken report card. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [report?.id]);
 
   const download = async () => {
     if (!report?.id) return;
@@ -111,6 +154,10 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
 
   const printed = rows.filter((r) => r.total != null);
   const average = printed.length ? printed.reduce((a, r) => a + (r.total ?? 0), 0) / printed.length : totalScore;
+  const sumOfScores = printed.reduce((a, r) => a + (r.total ?? 0), 0);
+  const attTotal = context?.attendance?.total ?? 0;
+  const attPresent = context?.attendance?.present ?? 0;
+  const attendanceText = attTotal > 0 ? `${attPresent}/${attTotal} (${Math.round((attPresent / attTotal) * 100)}%)` : '—';
 
   return (
     <WorkSurface>
@@ -178,7 +225,11 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
             ['Student', studentName],
             ['Class', studentClass],
             [idLabel, studentId],
-            ['Overall average', average != null ? `${Math.round(average)}%` : '—'],
+            ['Class size', context?.classSize ? String(context.classSize) : '—'],
+            ['Attendance', attendanceText],
+            ['Days present', context?.attendance?.total ? String(context.attendance.present) : '—'],
+            ['Days absent', context?.attendance?.total ? String(context.attendance.total - context.attendance.present) : '—'],
+            ['Term', termName],
           ].map(([label, value]) => (
             <div key={label}>
               <p className="text-xs font-semibold uppercase tracking-[0.07em] text-slate-400">{label}</p>
@@ -239,10 +290,16 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
           <div className="bg-tint-blue rounded-xl px-4 py-3.5">
             <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-blue">Subjects</p>
             <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">{printed.length}</p>
+          </div>
+          <div className="bg-tint-lilac rounded-xl px-4 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-lilac">Total score</p>
+            <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+              {printed.length ? `${Math.round(sumOfScores)} / ${printed.length * 100}` : '—'}
+            </p>
           </div>
           <div className="bg-tint-mint rounded-xl px-4 py-3.5">
             <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-mint">Average</p>
@@ -280,12 +337,20 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
           <p className="mt-1.5 text-base leading-relaxed text-slate-800 dark:text-slate-200">{comments}</p>
         </div>
 
-        {/* Signatures */}
+        {/* Signatures — the two people who sign the school's copy. */}
         <div className="flex flex-col sm:flex-row gap-6 mt-8">
-          {['Class teacher', 'Head teacher', 'Parent / guardian'].map((l) => (
-            <div key={l} className="flex-1">
-              <div className="h-8 border-b border-slate-400" />
-              <p className="mt-1.5 text-[13px] text-slate-500">{l}</p>
+          {[
+            { label: 'Class teacher', image: signatures?.classTeacher, name: signatures?.classTeacherName },
+            { label: 'Head teacher', image: signatures?.headTeacher, name: signatures?.headTeacherName },
+          ].map((slot) => (
+            <div key={slot.label} className="flex-1">
+              <div className="h-8 border-b border-slate-400 flex items-end justify-start overflow-hidden">
+                {slot.image && (
+                  <img src={slot.image} alt={`${slot.label} signature`} className="max-h-8 object-contain object-left" />
+                )}
+              </div>
+              <p className="mt-1.5 text-[13px] text-slate-500">{slot.label}</p>
+              {slot.name && <p className="text-[11px] text-slate-400">{slot.name}</p>}
             </div>
           ))}
         </div>

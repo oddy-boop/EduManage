@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
@@ -6,12 +6,46 @@ import { WorkSurface } from '../../components/Layouts';
 import {
   Avatar, Badge, Button, Card, Chip, EmptyState, InlineNote, Input, PageHeader, Select, SkeletonTable,
 } from '../../components/ui';
-import { CA_MAX, EXAM_MAX, SUBJECT_MAX, clampExam, examError, gradeFor } from '../../lib/grading';
+import { CA_MAX, EXAM_MAX, SUBJECT_MAX, gradeFor } from '../../lib/grading';
 
 interface CaScore {
+  /** Already weighted to the admin's CA share, e.g. 88% of 50 = 44. */
   caScore: number;
+  /** The raw assessment-book average, before weighting. */
+  averagePercent: number;
   entryCount: number;
 }
+
+/**
+ * Exam marks are typed out of 100 — the figure that is actually on the paper — and
+ * the admin's exam weight is applied by the system, so a teacher never does "×0.5"
+ * in their head.
+ *
+ * A mark saved BEFORE the weighting changed was weighted against the old maximum,
+ * and nothing records what that maximum was. A 60 stored when the exam share was 60
+ * is a full mark; read against a share of 50 it converts to 120 out of 100. Such a
+ * row is flagged rather than quietly capped: silently turning 60 into 50 would
+ * change a student's score without anyone being told.
+ */
+const EXAM_RAW_MAX = 100;
+const toWeightedExam = (raw: number) => Math.round(((raw / EXAM_RAW_MAX) * EXAM_MAX) * 100) / 100;
+const toRawExam = (weighted: number) =>
+  Math.min(EXAM_RAW_MAX, Math.max(0, Math.round(((weighted / EXAM_MAX) * EXAM_RAW_MAX) * 100) / 100));
+
+/** Clamp and validate against the paper's own total, not the weighted share. */
+const clampRawExam = (value: unknown): number => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(EXAM_RAW_MAX, Math.max(0, Math.round(n * 100) / 100));
+};
+
+const rawExamError = (value: unknown): string | null => {
+  const n = Number(value);
+  if (value === '' || value === null || value === undefined || !Number.isFinite(n)) return 'Enter a number';
+  if (n < 0) return 'Cannot be negative';
+  if (n > EXAM_RAW_MAX) return `Exam cannot exceed ${EXAM_RAW_MAX}`;
+  return null;
+};
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 
@@ -33,6 +67,11 @@ export const TeacherReportEntry: React.FC = () => {
   const [activeClass, setActiveClass] = useState('');
   const [currentTerm, setCurrentTerm] = useState('Term 2');
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  // Rows the teacher has typed into since the last save. The subject_reports
+  // subscription re-reads every few seconds and also re-fires whenever it is
+  // resubscribed; without this it overwrote in-progress marks with whatever was
+  // last saved, which looks exactly like a field that refuses to be edited.
+  const dirtyRef = useRef<Set<string>>(new Set());
   const [assignments, setAssignments] = useState<{ classId: string; courseCode: string; subject: string }[]>([]);
 
   // Subjects are per class, not global. A teacher who takes English in Grade 7 and
@@ -108,13 +147,15 @@ export const TeacherReportEntry: React.FC = () => {
       const gradeMap: Record<string, any> = {};
       data.forEach((r: any) => {
         map[r.studentId] = r;
-        gradeMap[r.studentId] = { exam: Number(r.examScore) || 0, remarks: r.remarks || '' };
+        gradeMap[r.studentId] = { exam: toRawExam(Number(r.examScore) || 0), remarks: r.remarks || '' };
       });
       setExistingReports(map);
       setGrades((prev) => {
         const next = { ...prev };
         students.forEach((s) => {
-          next[s.id] = gradeMap[s.id] || { exam: 0, remarks: '' };
+          // Never clobber a row being edited right now.
+          if (dirtyRef.current.has(s.id)) return;
+          next[s.id] = gradeMap[s.id] || prev[s.id] || { exam: 0, remarks: '' };
         });
         return next;
       });
@@ -129,7 +170,7 @@ export const TeacherReportEntry: React.FC = () => {
     Promise.all(
       students.map((s) =>
         firestoreService
-          .getAssessmentSummary(s.id, activeClass, currentTerm, CA_MAX)
+          .getAssessmentSummary(s.id, activeClass, currentTerm, CA_MAX, activeSubject)
           .then((summary) => [s.id, summary] as const)
           .catch(() => [s.id, { caScore: 0, entryCount: 0 }] as const),
       ),
@@ -144,12 +185,17 @@ export const TeacherReportEntry: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [students, activeClass, currentTerm]);
+  }, [students, activeClass, currentTerm, activeSubject]);
+
+  useEffect(() => {
+    dirtyRef.current.clear();
+  }, [activeClass, activeSubject, currentTerm]);
 
   const isLocked = (studentId: string) => existingReports[studentId]?.status === 'submitted';
 
   const handleGradeChange = (studentId: string, field: 'exam' | 'remarks', value: any) => {
     if (isLocked(studentId)) return;
+    dirtyRef.current.add(studentId);
     setStatus(null);
     setGrades((prev) => ({
       ...prev,
@@ -157,7 +203,7 @@ export const TeacherReportEntry: React.FC = () => {
         ...prev[studentId],
         // Was `Number(value) || 0` — an out-of-range mark was stored as typed
         // because `max` on the input only styles, it does not block.
-        [field]: field === 'remarks' ? value : clampExam(value),
+        [field]: field === 'remarks' ? value : clampRawExam(value),
       },
     }));
   };
@@ -171,18 +217,29 @@ export const TeacherReportEntry: React.FC = () => {
   const rows = useMemo(
     () =>
       students.map((s) => {
-        const ca = Number(caScores[s.id]?.caScore ?? 0) || 0;
+        // caRaw is the assessment book's own average; caWeighted is that average
+        // taken to the admin's CA share. Both are shown so the arithmetic is visible.
+        const caWeighted = Number(caScores[s.id]?.caScore ?? 0) || 0;
+        const caRaw = Number(caScores[s.id]?.averagePercent ?? 0) || 0;
         const entryCount = caScores[s.id]?.entryCount ?? 0;
-        const exam = Number(grades[s.id]?.exam ?? 0) || 0;
-        const total = ca + exam;
+        const examRaw = Number(grades[s.id]?.exam ?? 0) || 0;
+        const examWeighted = toWeightedExam(examRaw);
+        // The stored mark exceeds today's exam share, so it was saved under a
+        // different weighting and cannot be trusted until it is re-entered.
+        const storedExam = Number(existingReports[s.id]?.examScore ?? NaN);
+        const staleWeighting = Number.isFinite(storedExam) && storedExam > EXAM_MAX;
+        const total = Math.round((caWeighted + examWeighted) * 100) / 100;
         return {
           student: s,
-          ca,
+          ca: caWeighted,
+          caRaw,
           entryCount,
-          exam,
+          exam: examRaw,
+          examWeighted,
           total,
           band: gradeFor(total),
-          error: examError(exam),
+          error: rawExamError(examRaw),
+          staleWeighting,
           locked: isLocked(s.id),
           noCa: entryCount === 0,
           partialCa: entryCount > 0 && expectedEntries > 0 && entryCount < expectedEntries,
@@ -205,21 +262,38 @@ export const TeacherReportEntry: React.FC = () => {
           term: currentTerm,
           subject: activeSubject,
           caScore: r.ca,
-          examScore: r.exam,
+          // Stored weighted: report cards, merges and grades are all out of 100.
+          examScore: r.examWeighted,
           remarks: grades[r.student.id]?.remarks ?? '',
         }),
       ),
     );
 
   const saveDraft = async () => {
+    // Saving nothing is not a success. With every row locked, persist() iterates an
+    // empty list and the old code still reported "Draft saved", which reads as though
+    // the screen should now be editable.
+    if (editable.length === 0) {
+      setStatus({
+        tone: 'bad',
+        text: 'Nothing to save — every row here is submitted and locked. An administrator must reopen it first.',
+      });
+      return;
+    }
     setSaving(true);
     setStatus(null);
     try {
       await persist();
-      setStatus({ tone: 'ok', text: `Draft saved for ${activeSubject}.` });
+      dirtyRef.current.clear();
+      setStatus({ tone: 'ok', text: `Draft saved for ${activeSubject}. You can keep editing until you submit.` });
     } catch (error) {
       console.error('Save failed:', error);
-      setStatus({ tone: 'bad', text: 'Could not save. Your entries are still on screen — try again.' });
+      // Show what the server actually said. "Try again" is wrong advice when the
+      // reason is that the subject is already submitted and needs an admin to reopen it.
+      setStatus({
+        tone: 'bad',
+        text: error instanceof Error ? error.message : 'Could not save. Your entries are still on screen — try again.',
+      });
     } finally {
       setSaving(false);
     }
@@ -237,11 +311,15 @@ export const TeacherReportEntry: React.FC = () => {
     setStatus(null);
     try {
       await persist();
+      dirtyRef.current.clear();
       await firestoreService.submitSubjectReports(activeClass, activeSubject, currentTerm);
       setStatus({ tone: 'ok', text: `${activeSubject} scores submitted to the class teacher.` });
     } catch (error) {
       console.error('Submission failed:', error);
-      setStatus({ tone: 'bad', text: 'Submission failed. Nothing was locked — try again.' });
+      setStatus({
+        tone: 'bad',
+        text: error instanceof Error ? error.message : 'Submission failed. Nothing was locked — try again.',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -325,13 +403,15 @@ export const TeacherReportEntry: React.FC = () => {
       ) : (
         <Card pad={false} className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[880px]">
+            <table className="w-full border-collapse min-w-[1040px]">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">
                   <th className="text-left px-5 py-3.5 w-10">#</th>
                   <th className="text-left px-2 py-3.5">Student</th>
-                  <th className="text-right px-2 py-3.5 w-28">CA · auto ({CA_MAX})</th>
-                  <th className="text-right px-2 py-3.5 w-32">Exam ({EXAM_MAX})</th>
+                  <th className="text-right px-2 py-3.5 w-24">CA(100)</th>
+                  <th className="text-right px-2 py-3.5 w-24">CA ({CA_MAX})</th>
+                  <th className="text-right px-2 py-3.5 w-32">Exam ({EXAM_RAW_MAX})</th>
+                  <th className="text-right px-2 py-3.5 w-24">Exam ({EXAM_MAX})</th>
                   <th className="text-right px-2 py-3.5 w-20">Total</th>
                   <th className="text-center px-2 py-3.5 w-20">Grade</th>
                   <th className="text-left px-2 py-3.5">Remark</th>
@@ -359,9 +439,10 @@ export const TeacherReportEntry: React.FC = () => {
                           </span>
                         </div>
                       </td>
+                      {/* Straight from the Assessment Book, before weighting. */}
                       <td className="px-2 py-2.5 text-right">
                         <span className={`text-[12.5px] font-semibold ${r.noCa ? 'text-ink-butter' : 'text-slate-600 dark:text-slate-300'}`}>
-                          {r.noCa ? '—' : r.ca}
+                          {r.noCa ? '—' : `${r.caRaw}%`}
                         </span>
                         <span className={`block text-[10px] mt-px ${r.noCa || r.partialCa ? 'text-ink-butter' : 'text-slate-400'}`}>
                           {r.noCa
@@ -369,6 +450,13 @@ export const TeacherReportEntry: React.FC = () => {
                             : r.partialCa
                               ? `${r.entryCount} of ${expectedEntries} entries`
                               : `${r.entryCount} entr${r.entryCount === 1 ? 'y' : 'ies'}`}
+                        </span>
+                      </td>
+
+                      {/* The same figure at the admin's CA weight. */}
+                      <td className="px-2 py-2.5 text-right">
+                        <span className={`text-[13px] font-bold ${r.noCa ? 'text-slate-300' : 'text-slate-900 dark:text-white'}`}>
+                          {r.noCa ? '—' : r.ca}
                         </span>
                       </td>
                       <td className="px-2 py-2.5">
@@ -380,15 +468,37 @@ export const TeacherReportEntry: React.FC = () => {
                           <Input
                             type="number"
                             min={0}
-                            max={EXAM_MAX}
+                            max={EXAM_RAW_MAX}
                             inputMode="numeric"
                             value={r.exam}
                             invalid={!!r.error}
                             onChange={(e) => handleGradeChange(r.student.id, 'exam', e.target.value)}
-                            aria-label={`Exam score for ${r.student.name}`}
+                            aria-label={`Exam score out of ${EXAM_RAW_MAX} for ${r.student.name}`}
                             className="h-[38px] w-full text-right font-semibold"
                           />
                         )}
+
+                        {/* Sits under the mark it is about. It used to occupy the
+                            Remark cell, which meant a flagged row could not be
+                            given a remark at all. */}
+                        {r.error ? (
+                          <span className="mt-1 flex items-center justify-end gap-1 text-[10px] font-medium text-ink-blush">
+                            <Icon name="priority_high" className="text-[12px]" />
+                            {r.error}
+                          </span>
+                        ) : r.staleWeighting ? (
+                          <span className="mt-1 flex items-center justify-end gap-1 text-[10px] font-medium text-ink-butter">
+                            <Icon name="warning" className="text-[12px]" />
+                            Older weighting — re-enter
+                          </span>
+                        ) : null}
+                      </td>
+
+                      {/* Weighted automatically — the teacher never does the arithmetic. */}
+                      <td className="px-2 py-2.5 text-right">
+                        <span className={`text-[13px] font-bold ${r.error ? 'text-slate-300' : 'text-slate-900 dark:text-white'}`}>
+                          {r.error ? '—' : r.examWeighted}
+                        </span>
                       </td>
                       <td className="px-2 py-2.5 text-right text-[13px] font-bold text-slate-900 dark:text-white">
                         {r.error ? <span className="text-slate-300">—</span> : r.total}
@@ -405,11 +515,6 @@ export const TeacherReportEntry: React.FC = () => {
                           <span className="flex items-center gap-1.5 text-[11.5px] text-slate-400">
                             <Icon name="lock" className="text-[14px]" />
                             Submitted · locked
-                          </span>
-                        ) : r.error ? (
-                          <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-blush">
-                            <Icon name="priority_high" className="text-[14px]" />
-                            {r.error}
                           </span>
                         ) : (
                           <Input
@@ -470,8 +575,11 @@ export const TeacherReportEntry: React.FC = () => {
       )}
 
       <InlineNote icon="info">
-        Totals are out of {SUBJECT_MAX}. CA is derived from the Assessment Book and cannot be typed here. A partly-assessed
-        student is flagged but can still be submitted — an incomplete Assessment Book must not stall a whole class.
+        Enter the exam mark out of {EXAM_RAW_MAX} — the figure on the paper. The system weights it to {EXAM_MAX} and adds the
+        CA, weighted to {CA_MAX}, for a total out of {SUBJECT_MAX}. Both weights come from School Settings. Changing them
+        affects marks entered afterwards; anything saved under the previous weighting is flagged in its row and has to be
+        re-entered, because nothing records which maximum it was marked against. CA comes from the Assessment Book and
+        cannot be typed here; a partly-assessed student is flagged but can still be submitted.
       </InlineNote>
     </WorkSurface>
   );

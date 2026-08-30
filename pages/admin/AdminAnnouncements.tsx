@@ -16,11 +16,15 @@ interface Announcement {
   createdAt?: string;
 }
 
+/**
+ * Students are deliberately not an audience: they have no portal account and reach
+ * the app only through a quiz link, so a notice addressed to them would have been
+ * published to nobody. Anything meant for students goes to their parents.
+ */
 const AUDIENCES = [
   { value: 'all', label: 'Everyone' },
   { value: 'teachers', label: 'Teachers' },
   { value: 'parents', label: 'Parents' },
-  { value: 'students', label: 'Students' },
 ];
 
 const AUDIENCE_TONE: Record<string, Tint> = {
@@ -30,7 +34,11 @@ const AUDIENCE_TONE: Record<string, Tint> = {
   students: 'mint',
 };
 
-const audienceLabel = (v: string) => AUDIENCES.find((a) => a.value === v)?.label ?? v;
+/** Falls back for any legacy row still stored against a retired audience. */
+const AUDIENCE_LABELS: Record<string, string> = { students: 'Students (retired)' };
+
+const audienceLabel = (v: string) =>
+  AUDIENCES.find((a) => a.value === v)?.label ?? AUDIENCE_LABELS[v] ?? v;
 
 export const AdminAnnouncements: React.FC = () => {
   const { user } = useAuth();

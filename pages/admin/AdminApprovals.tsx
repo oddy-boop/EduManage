@@ -26,6 +26,10 @@ export const AdminApprovals: React.FC = () => {
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
+  // Subject marks a teacher has submitted and can no longer edit. The app told
+  // teachers to "ask an Admin to reopen it" long before an admin could actually do so.
+  const [locked, setLocked] = useState<any[]>([]);
+  const [reopening, setReopening] = useState<string | null>(null);
 
   /**
    * report.grades arrives in two shapes depending on which workflow wrote it:
@@ -120,6 +124,35 @@ export const AdminApprovals: React.FC = () => {
     }
   };
 
+  const loadLocked = () => {
+    firestoreService
+      .getLockedSubjectReports()
+      .then(setLocked)
+      .catch(() => setLocked([]));
+  };
+
+  useEffect(loadLocked, []);
+
+  const handleReopen = async (row: any) => {
+    if (
+      !window.confirm(
+        `Reopen ${row.subject} for ${row.classId} (${row.term})?\n\n${row.entryCount} entr${row.entryCount === 1 ? 'y' : 'ies'} become editable by the teacher again. If this class has already been finalised, the class teacher must finalise it again for the change to reach the report cards.`,
+      )
+    )
+      return;
+    setReopening(`${row.classId}||${row.subject}`);
+    setStatus(null);
+    try {
+      const res = await firestoreService.reopenSubjectReports(row.classId, row.subject, row.term);
+      setStatus({ tone: 'ok', text: `${res.reopenedCount} entr${res.reopenedCount === 1 ? 'y' : 'ies'} reopened for ${row.subject}.` });
+      loadLocked();
+    } catch (error) {
+      setStatus({ tone: 'bad', text: error instanceof Error ? error.message : 'Could not reopen those marks.' });
+    } finally {
+      setReopening(null);
+    }
+  };
+
   if (loading) {
     return (
       <WorkSurface>
@@ -147,6 +180,57 @@ export const AdminApprovals: React.FC = () => {
           )
         }
       />
+
+      {locked.length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Locked subject marks</p>
+            <p className="mt-1 text-[11.5px] text-slate-500 leading-relaxed">
+              Submitting seals a subject so a teacher cannot quietly revise a mark. Reopening is how a genuine mistake gets
+              corrected — it is recorded in the audit log.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[560px]">
+              <thead className="bg-slate-50 dark:bg-slate-900/40">
+                <tr>
+                  <Th>Class</Th>
+                  <Th>Subject</Th>
+                  <Th>Term</Th>
+                  <Th>Submitted by</Th>
+                  <Th className="text-right w-24">Entries</Th>
+                  <Th className="text-right w-32">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {locked.map((row) => {
+                  const key = `${row.classId}||${row.subject}`;
+                  return (
+                    <tr key={`${key}||${row.term}`}>
+                      <Td className="font-semibold text-slate-900 dark:text-white">{row.classId}</Td>
+                      <Td>{row.subject}</Td>
+                      <Td className="text-slate-500">{row.term}</Td>
+                      <Td className="text-slate-500">{row.teacherName || '—'}</Td>
+                      <Td className="text-right">{row.entryCount}</Td>
+                      <Td className="text-right">
+                        <Button
+                          variant="secondary"
+                          className="h-8 px-3 text-[11.5px]"
+                          icon="undo"
+                          loading={reopening === key}
+                          onClick={() => handleReopen(row)}
+                        >
+                          Reopen
+                        </Button>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {batches.length === 0 ? (
         <EmptyState

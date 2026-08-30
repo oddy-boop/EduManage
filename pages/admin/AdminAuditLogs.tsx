@@ -12,13 +12,20 @@ const CATEGORIES = [
   { value: 'registration', label: 'Registrations' },
   { value: 'fee_update', label: 'Fee updates' },
   { value: 'config_change', label: 'Config changes' },
+  { value: 'security', label: 'Security' },
+  { value: 'quiz_reset', label: 'Quiz resets' },
   { value: 'other', label: 'Other' },
 ];
+
+/** Every type that has its own chip. Anything else is caught by "Other". */
+const KNOWN_TYPES = CATEGORIES.filter((c) => c.value !== 'all' && c.value !== 'other').map((c) => c.value);
 
 const TYPE_TONE: Record<string, Tint> = {
   registration: 'lilac',
   fee_update: 'peach',
   config_change: 'blue',
+  security: 'blush',
+  quiz_reset: 'butter',
   other: 'plain',
 };
 
@@ -61,7 +68,12 @@ export const AdminAuditLogs: React.FC = () => {
   const filteredLogs = useMemo(() => {
     const query = searchTerm.toLowerCase();
     return logs.filter((log) => {
-      const matchesType = selectedType === 'all' || log.type === selectedType;
+      // "Other" is a catch-all for anything without its own chip. Matching it
+      // exactly would hide any newly introduced event type under every filter
+      // except All — a bad failure mode for a security log.
+      const matchesType =
+        selectedType === 'all' ||
+        (selectedType === 'other' ? !KNOWN_TYPES.includes(log.type) : log.type === selectedType);
       const matchesSearch =
         (log.userName || '').toLowerCase().includes(query) ||
         (log.userEmail || '').toLowerCase().includes(query) ||
@@ -155,7 +167,7 @@ export const AdminAuditLogs: React.FC = () => {
               </thead>
               <tbody>
                 {filteredLogs.map((log) => (
-                  <tr key={log.id} className={log.type === 'other' ? 'bg-tint-blush/40' : undefined}>
+                  <tr key={log.id} className={!KNOWN_TYPES.includes(log.type) ? 'bg-tint-blush/40' : undefined}>
                     <Td className="whitespace-nowrap text-slate-500">{formatTimestamp(log.timestamp)}</Td>
                     <Td>
                       <Badge tone={TYPE_TONE[log.type] ?? 'plain'}>{log.action || log.type || 'Event'}</Badge>

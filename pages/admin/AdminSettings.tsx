@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/AuthContext';
 import { loadGradingScale } from '../../lib/grading';
 import { WorkSurface } from '../../components/Layouts';
 import {
-  Badge, Button, Card, Drawer, EmptyState, Field, ghs, InlineNote, Input, PageHeader, SectionHeading, Select,
+  Badge, Button, Card, Chip, Drawer, EmptyState, Field, ghs, InlineNote, Input, PageHeader, SectionHeading, Select,
   SkeletonTable, StatTile, Tabs, Td, Th,
 } from '../../components/ui';
 
@@ -20,7 +20,7 @@ interface CourseConfig {
   id: string;
   name: string;
   code: string;
-  department: string;
+  department?: string;
 }
 
 type Tab = 'grades' | 'courses' | 'grading' | 'system';
@@ -37,7 +37,7 @@ export const AdminSettings: React.FC = () => {
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   const [newGrade, setNewGrade] = useState({ name: '', baseFee: 0 });
-  const [newCourse, setNewCourse] = useState({ name: '', code: '', department: '' });
+  const [newCourse, setNewCourse] = useState({ name: '' });
   const [editingGrade, setEditingGrade] = useState<GradeConfig | null>(null);
   const [editingCourse, setEditingCourse] = useState<CourseConfig | null>(null);
 
@@ -46,6 +46,11 @@ export const AdminSettings: React.FC = () => {
   const [fromClass, setFromClass] = useState('');
   const [toClass, setToClass] = useState('');
   const [promoting, setPromoting] = useState(false);
+  // Whole-class is the common case at year end; picking students covers the ones who
+  // repeat, or who move for any other reason, without touching everybody else.
+  const [promoteMode, setPromoteMode] = useState<'class' | 'picked'>('class');
+  const [classRoster, setClassRoster] = useState<any[]>([]);
+  const [pickedStudents, setPickedStudents] = useState<string[]>([]);
   const [arrearsPreview, setArrearsPreview] = useState<{ total: number; students: any[] } | null>(null);
   const [carrying, setCarrying] = useState(false);
 
@@ -128,19 +133,33 @@ export const AdminSettings: React.FC = () => {
     }
   };
 
+  /**
+   * The code is derived from the name rather than typed. It is still the key that
+   * links a subject to a teacher's assignments and to a report card column, so it
+   * has to exist — but asking an administrator to invent one was a way to end up
+   * with MATH101 and MTH1 for the same subject.
+   */
+  const codeFromName = (name: string) =>
+    name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+
   const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCourse.name || !newCourse.code) return;
+    const id = codeFromName(newCourse.name);
+    if (!newCourse.name.trim() || !id) return;
     setStatus(null);
     try {
-      const id = newCourse.code.toUpperCase();
-      await firestoreService.createCourseConfig(id, { ...newCourse, updatedAt: new Date().toISOString() });
-      await log(
-        'Add Course Config',
-        `Added/updated course catalog configuration: ${newCourse.name} (${id}) under Department: ${newCourse.department || 'General'}`,
-      );
-      setNewCourse({ name: '', code: '', department: '' });
-      setStatus({ tone: 'ok', text: `${id} saved.` });
+      if (courses.some((c) => c.id === id)) {
+        setStatus({ tone: 'bad', text: `${newCourse.name.trim()} is already in the catalogue.` });
+        return;
+      }
+      await firestoreService.createCourseConfig(id, {
+        name: newCourse.name.trim(),
+        code: id,
+        updatedAt: new Date().toISOString(),
+      });
+      await log('Add Course Config', `Added subject to the catalogue: ${newCourse.name.trim()}`);
+      setNewCourse({ name: '' });
+      setStatus({ tone: 'ok', text: `${newCourse.name.trim()} saved.` });
     } catch (error) {
       console.error('Error adding course:', error);
       setStatus({ tone: 'bad', text: 'Could not save that course.' });
@@ -177,13 +196,14 @@ export const AdminSettings: React.FC = () => {
     if (!editingCourse) return;
     setStatus(null);
     try {
+      // The code is the stored key that teacher assignments and report columns point
+      // at, so renaming a subject must not silently re-key it.
       await firestoreService.createCourseConfig(editingCourse.id, {
         name: editingCourse.name,
         code: editingCourse.code,
-        department: editingCourse.department,
         updatedAt: new Date().toISOString(),
       });
-      await log('Edit Course Config', `Edited course config: ${editingCourse.name} (${editingCourse.code})`);
+      await log('Edit Course Config', `Renamed subject to: ${editingCourse.name}`);
       setEditingCourse(null);
       setStatus({ tone: 'ok', text: 'Course updated.' });
     } catch (error) {
@@ -339,6 +359,47 @@ export const AdminSettings: React.FC = () => {
       setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not carry arrears forward.' });
     } finally {
       setCarrying(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!fromClass) {
+      setClassRoster([]);
+      setPickedStudents([]);
+      return;
+    }
+    const unsub = firestoreService.getStudentsForClass(fromClass, (data: any[]) => {
+      setClassRoster(data);
+      // Anyone no longer in this class cannot still be selected.
+      setPickedStudents((prev) => prev.filter((id) => data.some((st) => st.id === id)));
+    });
+    return () => unsub();
+  }, [fromClass]);
+
+  const handlePromoteSelected = async () => {
+    if (pickedStudents.length === 0 || !toClass) return;
+    const names = classRoster.filter((s) => pickedStudents.includes(s.id)).map((s) => s.name);
+    if (
+      !window.confirm(
+        `Move ${pickedStudents.length} student(s) from ${fromClass} to ${toClass}?\n\n${names.join(', ')}\n\nEveryone else in ${fromClass} stays where they are.`,
+      )
+    )
+      return;
+    setPromoting(true);
+    setStatus(null);
+    try {
+      const res = await firestoreService.promoteSelectedStudents(pickedStudents, toClass);
+      await log(
+        'Selective Promotion Executed',
+        `Moved ${res.promotedCount} of ${classRoster.length} students from ${fromClass} to ${toClass}: ${names.join(', ')}`,
+      );
+      setPickedStudents([]);
+      setStatus({ tone: 'ok', text: `${res.promotedCount} student(s) moved to ${toClass}.` });
+    } catch (error) {
+      console.error('Selective promotion failed:', error);
+      setStatus({ tone: 'bad', text: 'Could not move those students.' });
+    } finally {
+      setPromoting(false);
     }
   };
 
@@ -498,29 +559,19 @@ export const AdminSettings: React.FC = () => {
       {activeTab === 'courses' && (
         <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
           <Card className="flex flex-col gap-4 h-fit">
-            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Add a course</p>
+            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Add a subject</p>
             <form onSubmit={handleAddCourse} className="flex flex-col gap-4">
-              <Field label="Course name">
-                <Input value={newCourse.name} onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })} placeholder="e.g. Mathematics" />
+              <Field label="Subject name">
+                <Input value={newCourse.name} onChange={(e) => setNewCourse({ name: e.target.value })} placeholder="e.g. Mathematics" />
               </Field>
-              <Field label="Course code" hint="Uppercased and used as the id.">
-                <Input value={newCourse.code} onChange={(e) => setNewCourse({ ...newCourse, code: e.target.value })} placeholder="e.g. MATH101" />
-              </Field>
-              <Field label="Department">
-                <Input
-                  value={newCourse.department}
-                  onChange={(e) => setNewCourse({ ...newCourse, department: e.target.value })}
-                  placeholder="e.g. Sciences"
-                />
-              </Field>
-              <Button type="submit" icon="add" block disabled={!newCourse.name || !newCourse.code}>
-                Add course
+              <Button type="submit" icon="add" block disabled={!newCourse.name.trim()}>
+                Add subject
               </Button>
             </form>
           </Card>
 
           <div className="flex flex-col gap-3">
-            <SectionHeading>Course catalogue ({courses.length})</SectionHeading>
+            <SectionHeading>Subjects ({courses.length})</SectionHeading>
             {courses.length === 0 ? (
               <EmptyState icon="menu_book" title="No courses yet" body="Courses here become assignable to teachers and appear on report cards." />
             ) : (
@@ -529,9 +580,7 @@ export const AdminSettings: React.FC = () => {
                   <table className="w-full border-collapse">
                     <thead className="bg-slate-50 dark:bg-slate-900/40">
                       <tr>
-                        <Th>Course</Th>
-                        <Th>Code</Th>
-                        <Th>Department</Th>
+                        <Th>Subject</Th>
                         <Th className="text-right">Actions</Th>
                       </tr>
                     </thead>
@@ -539,10 +588,6 @@ export const AdminSettings: React.FC = () => {
                       {courses.map((c) => (
                         <tr key={c.id}>
                           <Td className="font-semibold text-slate-900 dark:text-white">{c.name}</Td>
-                          <Td>
-                            <Badge tone="blue">{c.code}</Badge>
-                          </Td>
-                          <Td className="text-slate-500">{c.department || 'General'}</Td>
                           <Td className="text-right">
                             <div className="flex justify-end gap-1.5">
                               <button
@@ -786,8 +831,19 @@ export const AdminSettings: React.FC = () => {
 
             <Card className="flex flex-col gap-4">
               <div>
-                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Batch promotion</p>
-                <p className="mt-1 text-[11.5px] text-slate-500">Move every student from one class level to the next.</p>
+                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Promotion</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">
+                  Move a whole class up, or pick the students who move and leave the rest where they are.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Chip active={promoteMode === 'class'} onClick={() => setPromoteMode('class')}>
+                  Whole class
+                </Chip>
+                <Chip active={promoteMode === 'picked'} onClick={() => setPromoteMode('picked')}>
+                  Pick students
+                </Chip>
               </div>
               <div className="flex items-end gap-3">
                 <Field label="From" className="flex-1">
@@ -812,13 +868,86 @@ export const AdminSettings: React.FC = () => {
                   </Select>
                 </Field>
               </div>
+              {promoteMode === 'picked' && (
+                <div className="flex flex-col gap-2">
+                  {!fromClass ? (
+                    <p className="text-[11.5px] text-slate-400">Choose the class they are coming from first.</p>
+                  ) : classRoster.length === 0 ? (
+                    <p className="text-[11.5px] text-slate-400">No students are registered in {fromClass}.</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11.5px] font-semibold text-slate-600 dark:text-slate-300">
+                          {pickedStudents.length} of {classRoster.length} selected
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPickedStudents(
+                              pickedStudents.length === classRoster.length ? [] : classRoster.map((st) => st.id),
+                            )
+                          }
+                          className="text-[11.5px] font-semibold text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        >
+                          {pickedStudents.length === classRoster.length ? 'Clear all' : 'Select all'}
+                        </button>
+                      </div>
+                      <div className="max-h-[260px] overflow-y-auto flex flex-col gap-1 rounded-[13px] border border-slate-200 dark:border-slate-700 p-1.5">
+                        {classRoster.map((st) => {
+                          const on = pickedStudents.includes(st.id);
+                          return (
+                            <label
+                              key={st.id}
+                              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] cursor-pointer transition-colors ${
+                                on ? 'bg-tint-blue' : 'hover:bg-slate-50 dark:hover:bg-slate-900/40'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() =>
+                                  setPickedStudents((prev) =>
+                                    prev.includes(st.id) ? prev.filter((x) => x !== st.id) : [...prev, st.id],
+                                  )
+                                }
+                                className="size-4 accent-primary"
+                              />
+                              <span className="text-[12px] font-medium text-slate-900 dark:text-white truncate">
+                                {st.name}
+                              </span>
+                              <span className="ml-auto text-[10.5px] text-slate-400 shrink-0">
+                                {st.admissionNumber || st.loginId || ''}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <InlineNote tone="blush" icon="warning">
-                This moves students immediately and reassigns them to the destination class&rsquo;s teachers. It cannot be
-                undone in one step.
+                {promoteMode === 'picked'
+                  ? 'Only the students you tick are moved. Everyone else stays in their current class.'
+                  : 'This moves every student in the class immediately and reassigns them to the destination class’s teachers.'}{' '}
+                It cannot be undone in one step.
               </InlineNote>
-              <Button variant="danger" loading={promoting} disabled={!fromClass || !toClass} onClick={handlePromote}>
-                Promote students
-              </Button>
+
+              {promoteMode === 'picked' ? (
+                <Button
+                  variant="danger"
+                  loading={promoting}
+                  disabled={pickedStudents.length === 0 || !toClass}
+                  onClick={handlePromoteSelected}
+                >
+                  Move {pickedStudents.length || ''} selected student{pickedStudents.length === 1 ? '' : 's'}
+                </Button>
+              ) : (
+                <Button variant="danger" loading={promoting} disabled={!fromClass || !toClass} onClick={handlePromote}>
+                  Promote whole class
+                </Button>
+              )}
             </Card>
 
             <Card className="flex flex-col gap-4">
@@ -982,17 +1111,11 @@ export const AdminSettings: React.FC = () => {
       >
         {editingCourse && (
           <form onSubmit={handleEditCourse} className="flex flex-col gap-4">
-            <Field label="Course name">
+            <Field
+              label="Subject name"
+              hint="Teachers' assignments and existing report cards stay linked to this subject when you rename it."
+            >
               <Input value={editingCourse.name} onChange={(e) => setEditingCourse({ ...editingCourse, name: e.target.value })} />
-            </Field>
-            <Field label="Course code">
-              <Input value={editingCourse.code} onChange={(e) => setEditingCourse({ ...editingCourse, code: e.target.value })} />
-            </Field>
-            <Field label="Department">
-              <Input
-                value={editingCourse.department}
-                onChange={(e) => setEditingCourse({ ...editingCourse, department: e.target.value })}
-              />
             </Field>
           </form>
         )}

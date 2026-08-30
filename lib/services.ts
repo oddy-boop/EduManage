@@ -192,6 +192,14 @@ export const firestoreService = {
     return mockOnSnapshot(`/api/reports?studentId=${encodeURIComponent(studentId)}`, callback);
   },
 
+  /** Finalised report cards for a class + term. Class teacher (own class) or admin. */
+  getReportsForClass(classId: string, term: string, callback: (data: any[]) => void) {
+    return mockOnSnapshot(
+      `/api/reports?classId=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}`,
+      callback,
+    );
+  },
+
   getReportsByStatus(status: string, callback: (data: any[]) => void) {
     return mockOnSnapshot(`/api/reports?status=${encodeURIComponent(status)}`, callback);
   },
@@ -230,9 +238,11 @@ export const firestoreService = {
     return mockOnSnapshot(`/api/assessments${qs ? `?${qs}` : ''}`, callback);
   },
 
-  async getAssessmentSummary(studentId: string, classId: string, term: string, caMax?: number) {
+  async getAssessmentSummary(studentId: string, classId: string, term: string, caMax?: number, subject?: string) {
     const query = new URLSearchParams({ studentId, classId, term });
     if (caMax !== undefined) query.set('caMax', String(caMax));
+    // Keeps one subject's continuous assessment out of another subject's CA column.
+    if (subject) query.set('subject', subject);
     const response = await apiFetch(`/api/assessments/summary?${query.toString()}`);
     if (!response.ok) throw new Error('Failed to fetch assessment summary');
     return await response.json();
@@ -248,10 +258,60 @@ export const firestoreService = {
     return await response.json();
   },
 
+  /** Change one entry in place — what a mark sheet does when a cell is edited. */
+  async updateAssessment(id: string, data: Partial<{ score: number; maxScore: number; title: string; category: string; date: string }>) {
+    const response = await apiFetch(`/api/assessments/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to update assessment entry');
+    return await response.json();
+  },
+
   async deleteAssessment(id: string) {
     const response = await apiFetch(`/api/assessments/${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Failed to delete assessment entry');
     return await response.json();
+  },
+
+  /** The class teacher's saved remarks for a class+term. */
+  async getClassRemarks(classId: string, term: string) {
+    const response = await apiFetch(
+      `/api/classRemarks?classId=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}`,
+    );
+    if (!response.ok) return [] as { studentId: string; remark: string; updatedAt?: string }[];
+    return (await response.json()) as { studentId: string; remark: string; updatedAt?: string }[];
+  },
+
+  async saveClassRemark(classId: string, term: string, studentId: string, remark: string) {
+    const response = await apiFetch('/api/classRemarks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classId, term, studentId, remark }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not save that remark');
+    return data;
+  },
+
+  /** Subject entries currently locked by submission, grouped by class + subject. */
+  async getLockedSubjectReports(term?: string) {
+    const response = await apiFetch(`/api/subjectReports/locked${term ? `?term=${encodeURIComponent(term)}` : ''}`);
+    if (!response.ok) return [] as any[];
+    return (await response.json()) as any[];
+  },
+
+  /** Admin-only: unlock submitted marks so the teacher can correct them. */
+  async reopenSubjectReports(classId: string, subject: string, term: string) {
+    const response = await apiFetch('/api/subjectReports/reopen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classId, subject, term }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Could not reopen those marks');
+    return data as { reopenedCount: number };
   },
 
   // --- SUBJECT REPORTS (Class Teacher merge workflow) ---
@@ -556,8 +616,27 @@ export const firestoreService = {
     return await response.json();
   },
 
-  onQuizzesChange(callback: (data: any[]) => void) {
-    return mockOnSnapshot('/api/quizzes', callback);
+  /**
+   * Exchange a quiz link + student ID for a quiz ticket. The server checks the ID
+   * exists and that the student is registered in the class the quiz was set for.
+   */
+  async joinQuiz(quizId: string, loginId: string) {
+    const response = await fetch('/api/quiz/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quizId, loginId }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const err = new Error(data.error || 'Could not open that quiz') as Error & { code?: string };
+      err.code = data.code;
+      throw err;
+    }
+    return data as {
+      ticket: string;
+      student: { id: string; name: string; classId: string };
+      quiz: any;
+    };
   },
 
   onTeacherQuizzesChange(teacherId: string, callback: (data: any[]) => void) {
@@ -565,11 +644,12 @@ export const firestoreService = {
   },
 
   // --- QUIZ RESULTS ---
-  async submitQuizResult(data: { quizId: string; studentId: string; studentName?: string; answers: Record<string, string> }) {
+  async submitQuizResult(data: { ticket: string; answers: Record<string, string> }) {
     const response = await fetch('/api/quizResults', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      // The ticket carries the quiz and the student; the body carries only answers.
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.ticket}` },
+      body: JSON.stringify({ answers: data.answers })
     });
     const body = await response.json();
     if (!response.ok) {
@@ -580,6 +660,13 @@ export const firestoreService = {
       throw err;
     }
     return body;
+  },
+
+  /** One-shot read of a quiz's results, for importing them into the assessment book. */
+  async fetchQuizResults(quizId: string) {
+    const response = await apiFetch(`/api/quizResults?quizId=${encodeURIComponent(quizId)}`);
+    if (!response.ok) throw new Error('Could not load those quiz results');
+    return (await response.json()) as any[];
   },
 
   getQuizResults(quizId: string, callback: (data: any[]) => void) {
@@ -712,6 +799,44 @@ export const firestoreService = {
     return await response.json();
   },
 
+  /** Class size and attendance for a report card's on-screen view. */
+  async getReportContext(reportId: string) {
+    const response = await apiFetch(`/api/reports/${encodeURIComponent(reportId)}/context`);
+    if (!response.ok) return null;
+    return (await response.json()) as { classSize: number; attendance: { present: number; total: number } };
+  },
+
+  /** The signatures that belong on one report card, for the on-screen view. */
+  async getReportSignatures(reportId: string) {
+    const response = await apiFetch(`/api/reports/${encodeURIComponent(reportId)}/signatures`);
+    if (!response.ok) return null;
+    return (await response.json()) as {
+      classTeacher: string | null;
+      classTeacherName?: string | null;
+      headTeacher: string | null;
+      headTeacherName?: string | null;
+    };
+  },
+
+  /** The signer's own saved signature, reused on every report card they sign. */
+  async getMySignature(): Promise<string | null> {
+    const response = await apiFetch('/api/auth/signature');
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.signature ?? null;
+  },
+
+  async saveMySignature(signature: string | null) {
+    const response = await apiFetch('/api/auth/signature', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signature }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to save signature');
+    return data;
+  },
+
   async changePassword(currentPassword: string, newPassword: string) {
     const response = await apiFetch('/api/auth/change-password', {
       method: 'POST',
@@ -720,6 +845,18 @@ export const firestoreService = {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to change password');
+    return data;
+  },
+
+  /** Move only the students whose ids are given, leaving the rest of the class alone. */
+  async promoteSelectedStudents(studentIds: string[], toClass: string) {
+    const response = await apiFetch('/api/students/promote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentIds, toClass }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to move those students');
     return data;
   },
 

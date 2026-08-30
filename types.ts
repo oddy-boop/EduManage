@@ -27,6 +27,7 @@ export enum View {
   ADMIN_REGISTRATION = 'ADMIN_REGISTRATION',
   ADMIN_FEES = 'ADMIN_FEES',
   ADMIN_CALENDAR = 'ADMIN_CALENDAR',
+  ADMIN_ATTENDANCE = 'ADMIN_ATTENDANCE',
   ADMIN_APPROVALS = 'ADMIN_APPROVALS',
   ADMIN_SETTINGS = 'ADMIN_SETTINGS',
   ADMIN_AUDIT_LOGS = 'ADMIN_AUDIT_LOGS',
@@ -237,7 +238,7 @@ export interface ClassSchedule {
   subjects: any[];
 }
 
-export const ASSESSMENT_CATEGORIES = ['Test', 'Homework', 'Class Work', 'Project', 'Participation'] as const;
+export const ASSESSMENT_CATEGORIES = ['Test', 'Homework', 'Class Work', 'Project', 'Participation', 'Quiz'] as const;
 export type AssessmentCategory = typeof ASSESSMENT_CATEGORIES[number];
 
 export interface Assessment {

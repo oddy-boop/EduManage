@@ -46,6 +46,8 @@ export const AdminRegistration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('student');
   const [generatedId, setGeneratedId] = useState<string | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  // Shown alongside the child's credentials when both were created together.
+  const [parentCredentials, setParentCredentials] = useState<{ loginId: string; password: string | null; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
@@ -54,6 +56,7 @@ export const AdminRegistration: React.FC = () => {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [rosterSearch, setRosterSearch] = useState('');
+  const [rosterView, setRosterView] = useState<'students' | 'teachers' | 'parents'>('students');
   const [parentSearch, setParentSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null);
@@ -63,19 +66,34 @@ export const AdminRegistration: React.FC = () => {
   const [availableGrades, setAvailableGrades] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
 
-  const [studentForm, setStudentForm] = useState({ name: '', age: '', parentName: '', parentContact: '', classId: '', parentId: '' });
+  const [studentForm, setStudentForm] = useState({
+    name: '',
+    dateOfBirth: '',
+    parentName: '',
+    parentContact: '',
+    classId: '',
+    parentId: '',
+  });
+  // When the guardian is not already registered, they are created from this same
+  // form rather than sending the admin away to the Parent tab and back.
+  const [newParent, setNewParent] = useState({ name: '', email: '', contact: '' });
+  const [parentMode, setParentMode] = useState<'existing' | 'new'>('existing');
   const [teacherForm, setTeacherForm] = useState({
     name: '',
     email: '',
     qualification: '',
+    location: '',
+    contact: '',
+    dateOfBirth: '',
     subjects: ['Mathematics'],
     assignedClasses: [] as string[],
     assignedCourses: [] as string[],
   });
   const [parentForm, setParentForm] = useState({ name: '', email: '', contact: '' });
-  // (class, course) pairs — replaces the old two flat lists, which multiplied out
-  // into "teaches every one of their subjects in every one of their classes".
-  const [teacherAssignments, setTeacherAssignments] = useState<{ classId: string; courseCode: string }[]>([]);
+  // One block per class, each holding every subject this teacher takes IN that class.
+  // The API still stores flat (class, course) pairs — the grouping is a UI shape, so
+  // adding a second subject to a class is a tick rather than a whole new row.
+  const [teaching, setTeaching] = useState<{ classId: string; courseCodes: string[] }[]>([]);
   // Which class this teacher is the CLASS TEACHER of — a different thing from the
   // classes they teach in. The class teacher is the one who merges every subject
   // teacher's marks into a report card, so it lives on the grade, not the user.
@@ -169,24 +187,15 @@ export const AdminRegistration: React.FC = () => {
       : Promise.resolve();
 
   const resetForm = () => {
-    setStudentForm({ name: '', age: '', parentName: '', parentContact: '', classId: '', parentId: '' });
-    setTeacherForm({ name: '', email: '', qualification: '', subjects: ['Mathematics'], assignedClasses: [], assignedCourses: [] });
+    setStudentForm({ name: '', dateOfBirth: '', parentName: '', parentContact: '', classId: '', parentId: '' });
+    setNewParent({ name: '', email: '', contact: '' });
+    setParentMode('existing');
+    setTeacherForm({ name: '', email: '', qualification: '', location: '', contact: '', dateOfBirth: '', subjects: ['Mathematics'], assignedClasses: [], assignedCourses: [] });
     setParentForm({ name: '', email: '', contact: '' });
-    setTeacherAssignments([]);
+    setTeaching([]);
     setClassTeacherOf('');
     setParentSearch('');
   };
-
-  // Naming the person who is about to lose the role: silently reassigning it would
-  // strip their access to that class's report cards with nothing on screen to say so.
-  const displacedClassTeacher = (() => {
-    if (!classTeacherOf) return null;
-    const target = availableGrades.find((g: any) => g.name === classTeacherOf);
-    const holder = target?.classTeacherId;
-    if (!holder || holder === editingId) return null;
-    const person = allTeachers.find((t: any) => (t.uid || t.id) === holder);
-    return person?.name || 'Another teacher';
-  })();
 
   /**
    * Applies the class-teacher choice to grade_configs: clears whatever class this
@@ -217,9 +226,15 @@ export const AdminRegistration: React.FC = () => {
   const handleRegister = async () => {
     setError(null);
     const validAssignments = teacherAssignments.filter((a) => a.classId && a.courseCode);
-    if (activeTab === 'student' && !studentForm.parentId) {
-      setError('Select a parent or guardian for this student. If they are not registered yet, use the Parent tab first.');
+    if (activeTab === 'student' && parentMode === 'existing' && !studentForm.parentId) {
+      setError('Choose the guardian for this student, or switch to “Register a new parent”.');
       return;
+    }
+    if (activeTab === 'student' && parentMode === 'new' && !editingId) {
+      if (!newParent.name.trim() || !newParent.email.trim()) {
+        setError("Enter the new parent's name and email so their account can be created.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -248,12 +263,38 @@ export const AdminRegistration: React.FC = () => {
 
       let newMemberId = '';
       if (activeTab === 'student') {
+        // The guardian must exist before the child can point at them, so when the
+        // admin is registering both at once the parent account is created first.
+        let parentId = studentForm.parentId;
+        let parentCreated: { loginId: string; password: string | null; name: string } | null = null;
+        if (parentMode === 'new') {
+          const newParentUid = firestoreService.generateId('users');
+          const parentLoginId = `P${Math.floor(100 + Math.random() * 900)}`;
+          const created = await firestoreService.registerParentWithId(newParentUid, {
+            name: newParent.name,
+            email: newParent.email,
+            contact: newParent.contact,
+            loginId: parentLoginId,
+          });
+          parentId = newParentUid;
+          parentCreated = { loginId: parentLoginId, password: created?.temporaryPassword || null, name: newParent.name };
+          await log('Parent Registration', `Registered new parent ${newParent.name} (Login ID: ${parentLoginId}) while registering a child`);
+        }
+
         // Pre-calculate the login ID from a fresh document id so it is atomic.
         const studentId = firestoreService.generateId('students');
         newMemberId = `STU${new Date().getFullYear()}${studentId.slice(0, 4).toUpperCase()}`;
-        await firestoreService.registerStudentWithId(studentId, { ...studentForm, grade: studentForm.classId, loginId: newMemberId });
+        await firestoreService.registerStudentWithId(studentId, {
+          ...studentForm,
+          parentId,
+          parentName: parentCreated?.name || studentForm.parentName,
+          parentContact: parentMode === 'new' ? newParent.contact : studentForm.parentContact,
+          grade: studentForm.classId,
+          loginId: newMemberId,
+        });
         await log('Student Registration', `Registered new student ${studentForm.name} with Login ID ${newMemberId}`);
         setGeneratedPassword(null);
+        setParentCredentials(parentCreated);
       } else if (activeTab === 'teacher') {
         const teacherId = firestoreService.generateId('users');
         newMemberId = `T${Math.floor(100 + Math.random() * 900)}`;
@@ -300,12 +341,14 @@ export const AdminRegistration: React.FC = () => {
       setActiveTab('student');
       setStudentForm({
         name: member.name,
-        age: member.age ? String(member.age) : '',
+        // Dates arrive as full ISO timestamps; the date input needs just the day part.
+        dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : '',
         parentName: member.parentName || '',
         parentContact: member.parentContact || '',
         classId: member.classId || '',
         parentId: member.parentId || '',
       });
+      setParentMode('existing');
     } else if (member.type === 'Parent') {
       setActiveTab('parent');
       setParentForm({ name: member.name, email: member.email || '', contact: '' });
@@ -313,12 +356,27 @@ export const AdminRegistration: React.FC = () => {
       setActiveTab('teacher');
       firestoreService
         .getTeacherAssignments({ teacherId: member.uid || member.id })
-        .then((rows) => setTeacherAssignments(rows.map((r) => ({ classId: r.classId, courseCode: r.courseCode }))))
-        .catch(() => setTeacherAssignments([]));
+        .then((rows) => {
+          // Collapse the stored pairs back into one block per class.
+          const order: string[] = [];
+          const byClass: Record<string, string[]> = {};
+          rows.forEach((r) => {
+            if (!(r.classId in byClass)) {
+              byClass[r.classId] = [];
+              order.push(r.classId);
+            }
+            if (r.courseCode) byClass[r.classId].push(r.courseCode);
+          });
+          setTeaching(order.map((classId) => ({ classId, courseCodes: byClass[classId] })));
+        })
+        .catch(() => setTeaching([]));
       setTeacherForm({
         name: member.name,
         email: member.email || '',
         qualification: member.qualification || '',
+        location: member.location || '',
+        contact: member.contact || '',
+        dateOfBirth: member.dateOfBirth ? String(member.dateOfBirth).slice(0, 10) : '',
         subjects: member.subjects || ['Mathematics'],
         assignedClasses: member.assignedClasses || [],
         assignedCourses: member.assignedCourses || [],
@@ -335,14 +393,73 @@ export const AdminRegistration: React.FC = () => {
     if (!window.confirm(`Generate a new temporary password for ${member.name}? Their current password stops working immediately.`)) return;
     try {
       const result = await firestoreService.resetUserPassword(uid);
-      await log('Password Reset', `Reset password for ${member.name} (${member.type})`);
+      // No client-side audit call here: the server writes that entry itself, so the
+      // record survives a closed tab and cannot be skipped by the caller.
       // Shown in a copyable panel rather than an alert() — this value is not recoverable.
       setResetResult({ name: member.name, password: result.temporaryPassword });
+      setError(null);
     } catch (err) {
       console.error('Failed to reset password:', err);
-      setError('Could not reset that password. Try again.');
+      setError(err instanceof Error ? err.message : 'Could not reset that password. Try again.');
     }
   };
+
+  /**
+   * Staff and guardians were previously reachable only through the "Recently added"
+   * panel, which holds ten of each. An admin could not open — let alone reset the
+   * password of — anyone registered before that, which is most of a real school.
+   */
+  const allPeopleEmpty = useMemo(
+    () => (rosterView === 'teachers' ? allTeachers.length === 0 : allParents.length === 0),
+    [rosterView, allTeachers, allParents],
+  );
+
+  const rosterPeople = useMemo(() => {
+    const source = rosterView === 'teachers' ? allTeachers : allParents;
+    const q = rosterSearch.trim().toLowerCase();
+    const matches = (p: any) =>
+      !q ||
+      [p.name, p.email, p.loginId].some((v) => (v || '').toLowerCase().includes(q));
+    return source
+      .filter(matches)
+      .slice()
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [rosterView, rosterSearch, allTeachers, allParents]);
+
+  /** Flattened back to the (class, subject) pairs the API stores. */
+  const teacherAssignments = useMemo(
+    () =>
+      teaching.flatMap((t) =>
+        t.courseCodes.filter(Boolean).map((courseCode) => ({ classId: t.classId, courseCode })),
+      ),
+    [teaching],
+  );
+
+  const setTeachingClass = (i: number, classId: string) =>
+    setTeaching((prev) => prev.map((t, j) => (j === i ? { ...t, classId } : t)));
+
+  const toggleTeachingSubject = (i: number, code: string) =>
+    setTeaching((prev) =>
+      prev.map((t, j) =>
+        j === i
+          ? { ...t, courseCodes: t.courseCodes.includes(code) ? t.courseCodes.filter((c) => c !== code) : [...t.courseCodes, code] }
+          : t,
+      ),
+    );
+
+  /** Whole years, so the form shows what the record will actually say. */
+  const ageFromDob = (dob: string): number | null => {
+    if (!dob) return null;
+    const d = new Date(dob);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = new Date();
+    let years = now.getFullYear() - d.getFullYear();
+    const before = now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate());
+    if (before) years -= 1;
+    return years >= 0 && years < 130 ? years : null;
+  };
+
+  const studentAge = ageFromDob(studentForm.dateOfBirth);
 
   const groupedStudents = useMemo(() => {
     const filtered = allStudents.filter((s) => (s.name || '').toLowerCase().includes(rosterSearch.toLowerCase()));
@@ -379,7 +496,7 @@ export const AdminRegistration: React.FC = () => {
     <WorkSurface>
       <PageHeader
         title="Registration"
-        subtitle="Create accounts, issue credentials and browse the student directory"
+        subtitle="Create accounts, issue credentials and manage students, staff and guardians"
         actions={
           <Tabs
             value={activeTab}
@@ -408,20 +525,132 @@ export const AdminRegistration: React.FC = () => {
       {activeTab === 'roster' ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <SectionHeading>Student directory ({allStudents.length})</SectionHeading>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11.5px] font-semibold text-slate-500 mr-0.5">Showing</span>
+              {([
+                { value: 'students', label: `Students (${allStudents.length})` },
+                { value: 'teachers', label: `Teachers (${allTeachers.length})` },
+                { value: 'parents', label: `Parents (${allParents.length})` },
+              ] as const).map((v) => (
+                <Chip
+                  key={v.value}
+                  active={rosterView === v.value}
+                  onClick={() => {
+                    setRosterView(v.value);
+                    setRosterSearch('');
+                  }}
+                >
+                  {v.label}
+                </Chip>
+              ))}
+            </div>
             <div className="relative">
               <Icon name="search" className="text-[15px] text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <Input
                 value={rosterSearch}
                 onChange={(e) => setRosterSearch(e.target.value)}
-                placeholder="Find a student"
-                aria-label="Find a student"
+                placeholder={rosterView === 'students' ? 'Find a student' : 'Name, email or login ID'}
+                aria-label={`Find a ${rosterView === 'students' ? 'student' : rosterView.slice(0, -1)}`}
                 className="h-9 w-[260px] max-w-full pl-9"
               />
             </div>
           </div>
 
-          {allStudents.length === 0 ? (
+          {/* Landing on the student list while looking for a password reset is the
+              obvious wrong turn: students are the one group with no password at
+              all, so the column they would look in is empty by design. */}
+          {rosterView === 'students' && (
+            <InlineNote icon="lock">
+              Students sign in with their login ID alone and have no password. To issue a new password, switch to{' '}
+              <button
+                type="button"
+                onClick={() => { setRosterView('teachers'); setRosterSearch(''); }}
+                className="font-semibold text-primary underline underline-offset-2 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Teachers
+              </button>{' '}
+              or{' '}
+              <button
+                type="button"
+                onClick={() => { setRosterView('parents'); setRosterSearch(''); }}
+                className="font-semibold text-primary underline underline-offset-2 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Parents
+              </button>
+              .
+            </InlineNote>
+          )}
+
+          {rosterView !== 'students' ? (
+            allPeopleEmpty ? (
+              <EmptyState
+                icon="groups"
+                title={`No ${rosterView} registered yet`}
+                body={`Register one on the ${rosterView === 'teachers' ? 'Teacher' : 'Parent'} tab and they appear here.`}
+              />
+            ) : rosterPeople.length === 0 ? (
+              <NoResults title={`No ${rosterView} match “${rosterSearch}”`} onClear={() => setRosterSearch('')} clearLabel="Clear search" />
+            ) : (
+              <Card pad={false}>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse min-w-[640px]">
+                    <thead className="bg-slate-50 dark:bg-slate-900/40">
+                      <tr>
+                        <Th>{rosterView === 'teachers' ? 'Teacher' : 'Parent / guardian'}</Th>
+                        <Th>Login ID</Th>
+                        <Th>Email</Th>
+                        <Th className="text-right">Actions</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rosterPeople.map((p) => {
+                        const type = rosterView === 'teachers' ? 'Teacher' : 'Parent';
+                        const member = { ...p, id: p.uid || p.id, type };
+                        return (
+                          <tr key={member.id}>
+                            <Td>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedMember(member)}
+                                className="flex items-center gap-2.5 min-w-0 text-left rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Avatar name={p.name} size={30} tint={TYPE_TINT[type] ?? 'blue'} />
+                                <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{p.name}</span>
+                              </button>
+                            </Td>
+                            <Td className="text-slate-500">{p.loginId || '—'}</Td>
+                            <Td className="text-slate-500 truncate max-w-[220px]">{p.email || '—'}</Td>
+                            <Td className="text-right">
+                              <div className="inline-flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(member)}
+                                  aria-label={`Edit ${p.name}`}
+                                  className="h-8 px-3 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-[11.5px] font-semibold text-slate-600 dark:text-slate-300 hover:text-primary inline-flex items-center gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                >
+                                  <Icon name="edit" className="text-[14px]" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetPassword(member)}
+                                  aria-label={`Reset password for ${p.name}`}
+                                  className="h-8 px-3 rounded-[10px] bg-tint-blush text-[11.5px] font-semibold text-ink-blush hover:brightness-95 inline-flex items-center gap-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                >
+                                  <Icon name="key" className="text-[14px]" />
+                                  Reset password
+                                </button>
+                              </div>
+                            </Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )
+          ) : allStudents.length === 0 ? (
             <EmptyState icon="groups" title="No students registered yet" body="Register one on the Student tab and they appear here." />
           ) : Object.keys(groupedStudents).length === 0 ? (
             <NoResults title={`No students match “${rosterSearch}”`} onClear={() => setRosterSearch('')} clearLabel="Clear search" />
@@ -503,13 +732,24 @@ export const AdminRegistration: React.FC = () => {
                   <Field label="Full name">
                     <Input value={studentForm.name} onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })} />
                   </Field>
-                  <Field label="Age">
+                  {/* Date of birth rather than a typed age: an age entered once is
+                      wrong within a year, and every register, report and transfer
+                      form a school produces asks for the date anyway. */}
+                  <Field
+                    label="Date of birth"
+                    hint={
+                      studentForm.dateOfBirth
+                        ? studentAge != null
+                          ? `${studentAge} years old today`
+                          : 'That date does not look right.'
+                        : 'Age is worked out from this.'
+                    }
+                  >
                     <Input
-                      type="number"
-                      min={2}
-                      max={25}
-                      value={studentForm.age}
-                      onChange={(e) => setStudentForm({ ...studentForm, age: e.target.value })}
+                      type="date"
+                      max={new Date().toISOString().slice(0, 10)}
+                      value={studentForm.dateOfBirth}
+                      onChange={(e) => setStudentForm({ ...studentForm, dateOfBirth: e.target.value })}
                     />
                   </Field>
                 </div>
@@ -534,7 +774,48 @@ export const AdminRegistration: React.FC = () => {
                   </p>
                 </div>
 
-                {linkedParent ? (
+                <div className="flex gap-2">
+                  <Chip active={parentMode === 'existing'} onClick={() => setParentMode('existing')}>
+                    Choose an existing parent
+                  </Chip>
+                  <Chip
+                    active={parentMode === 'new'}
+                    onClick={() => {
+                      setParentMode('new');
+                      setStudentForm((f) => ({ ...f, parentId: '' }));
+                    }}
+                  >
+                    Register a new parent
+                  </Chip>
+                </div>
+
+                {parentMode === 'new' ? (
+                  <>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <Field label="Parent full name">
+                        <Input value={newParent.name} onChange={(e) => setNewParent({ ...newParent, name: e.target.value })} />
+                      </Field>
+                      <Field label="Parent email">
+                        <Input
+                          type="email"
+                          value={newParent.email}
+                          onChange={(e) => setNewParent({ ...newParent, email: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Parent contact">
+                      <Input
+                        value={newParent.contact}
+                        onChange={(e) => setNewParent({ ...newParent, contact: e.target.value })}
+                        placeholder="Phone number"
+                      />
+                    </Field>
+                    <InlineNote icon="info">
+                      The parent account is created first, then the child is linked to it. You will get both sets of
+                      credentials when you save.
+                    </InlineNote>
+                  </>
+                ) : linkedParent ? (
                   <div className="flex items-center gap-3 bg-tint-blue rounded-[14px] px-3.5 py-3">
                     <Avatar name={linkedParent.name} size={34} />
                     <div className="min-w-0 flex-1">
@@ -619,70 +900,110 @@ export const AdminRegistration: React.FC = () => {
                   />
                 </Field>
 
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Contact">
+                    <Input
+                      value={teacherForm.contact}
+                      onChange={(e) => setTeacherForm({ ...teacherForm, contact: e.target.value })}
+                      placeholder="Phone number"
+                    />
+                  </Field>
+                  <Field label="Date of birth">
+                    <Input
+                      type="date"
+                      max={new Date().toISOString().slice(0, 10)}
+                      value={teacherForm.dateOfBirth}
+                      onChange={(e) => setTeacherForm({ ...teacherForm, dateOfBirth: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Location">
+                  <Input
+                    value={teacherForm.location}
+                    onChange={(e) => setTeacherForm({ ...teacherForm, location: e.target.value })}
+                    placeholder="Town or area of residence"
+                  />
+                </Field>
+
                 <Field
-                  label="What they teach"
-                  hint="One row per subject per class. A teacher can take different subjects in different classes."
+                  label="Subject(s) taught"
+                  hint="Pick a class, then tick every subject they take in it. A teacher can take different subjects in different classes."
                 >
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2.5">
                     {availableGrades.length === 0 || availableCourses.length === 0 ? (
                       <p className="text-[11.5px] text-slate-400">
                         Configure class levels and courses under School Settings first.
                       </p>
                     ) : (
                       <>
-                        {teacherAssignments.map((a, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <Select
-                              value={a.classId}
-                              aria-label={`Class for assignment ${i + 1}`}
-                              onChange={(e) =>
-                                setTeacherAssignments((prev) =>
-                                  prev.map((x, j) => (j === i ? { ...x, classId: e.target.value } : x)),
-                                )
-                              }
-                              className="flex-1"
-                            >
-                              <option value="">Class…</option>
-                              {availableGrades.map((g) => (
-                                <option key={g.id} value={g.name}>
-                                  {g.name}
-                                </option>
-                              ))}
-                            </Select>
-                            <Select
-                              value={a.courseCode}
-                              aria-label={`Subject for assignment ${i + 1}`}
-                              onChange={(e) =>
-                                setTeacherAssignments((prev) =>
-                                  prev.map((x, j) => (j === i ? { ...x, courseCode: e.target.value } : x)),
-                                )
-                              }
-                              className="flex-1"
-                            >
-                              <option value="">Subject…</option>
-                              {availableCourses.map((c) => (
-                                <option key={c.id} value={c.code}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </Select>
-                            <button
-                              type="button"
-                              onClick={() => setTeacherAssignments((prev) => prev.filter((_, j) => j !== i))}
-                              aria-label={`Remove assignment ${i + 1}`}
-                              className="size-9 shrink-0 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                            >
-                              <Icon name="delete" className="text-[15px]" />
-                            </button>
+                        {teaching.map((t, i) => (
+                          <div
+                            key={i}
+                            className="rounded-[14px] border border-slate-200 dark:border-slate-700 p-3 flex flex-col gap-2.5"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={t.classId}
+                                aria-label={`Class ${i + 1}`}
+                                onChange={(e) => setTeachingClass(i, e.target.value)}
+                                className="flex-1"
+                              >
+                                <option value="">Choose a class…</option>
+                                {availableGrades.map((g) => (
+                                  <option key={g.id} value={g.name}>
+                                    {g.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <button
+                                type="button"
+                                onClick={() => setTeaching((prev) => prev.filter((_, j) => j !== i))}
+                                aria-label={`Remove class ${i + 1}`}
+                                className="size-9 shrink-0 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Icon name="delete" className="text-[15px]" />
+                              </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {availableCourses.map((c) => {
+                                const on = t.courseCodes.includes(c.code);
+                                return (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    aria-pressed={on}
+                                    disabled={!t.classId}
+                                    onClick={() => toggleTeachingSubject(i, c.code)}
+                                    className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                                      focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary ${
+                                        on
+                                          ? 'bg-primary text-white'
+                                          : 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                                      }`}
+                                  >
+                                    {c.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {t.classId && t.courseCodes.length === 0 && (
+                              <p className="text-[11px] text-ink-butter">
+                                Tick at least one subject, or this class will be ignored.
+                              </p>
+                            )}
                           </div>
                         ))}
+
                         <button
                           type="button"
-                          onClick={() => setTeacherAssignments((prev) => [...prev, { classId: '', courseCode: '' }])}
+                          onClick={() => setTeaching((prev) => [...prev, { classId: '', courseCodes: [] }])}
                           className="self-start flex items-center gap-1.5 text-[11.5px] font-semibold text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <Icon name="add" className="text-[14px]" />
-                          Add a class &amp; subject
+                          Add a class
                         </button>
                       </>
                     )}
@@ -709,13 +1030,6 @@ export const AdminRegistration: React.FC = () => {
                   </Select>
                 </Field>
 
-                {displacedClassTeacher && (
-                  <InlineNote tone="peach" icon="warning">
-                    {displacedClassTeacher} is currently the class teacher for {classTeacherOf}. Saving moves that role to{' '}
-                    {teacherForm.name || 'this teacher'}, and {displacedClassTeacher} will lose access to that class&rsquo;s
-                    report cards.
-                  </InlineNote>
-                )}
               </>
             )}
 
@@ -734,12 +1048,44 @@ export const AdminRegistration: React.FC = () => {
             )}
 
             <InlineNote icon="lock">
-              Creating an account is written to the audit log with your name and the time.
+              {editingId
+                ? 'This change is written to the audit log with your name and the time.'
+                : 'Creating an account is written to the audit log with your name and the time.'}
             </InlineNote>
 
             <Button icon={editingId ? 'save' : 'person_add'} block loading={isSubmitting} disabled={!canSubmit} onClick={handleRegister}>
               {editingId ? 'Save changes' : `Create ${activeTab}`}
             </Button>
+
+            {/* Reachable from here on purpose: editing locks the tab switcher, so an
+                admin part-way through a record would otherwise have to cancel and
+                start again just to issue a new password. */}
+            {editingId && activeTab !== 'student' && (
+              <>
+                <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-semibold text-slate-900 dark:text-white">Password</p>
+                    <p className="text-[11px] text-slate-500">
+                      Issues a new temporary one. Their current password stops working straight away.
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    icon="key"
+                    onClick={() =>
+                      handleResetPassword({
+                        id: editingId,
+                        name: activeTab === 'teacher' ? teacherForm.name : parentForm.name,
+                        type: activeTab === 'teacher' ? 'Teacher' : 'Parent',
+                      })
+                    }
+                  >
+                    Reset password
+                  </Button>
+                </div>
+              </>
+            )}
           </Card>
 
           <div className="flex flex-col gap-4">
@@ -763,12 +1109,34 @@ export const AdminRegistration: React.FC = () => {
                     </>
                   )}
                 </div>
+
+                {/* Registering a child and their guardian together produces two sets
+                    of credentials, and both are shown once. Hiding the parent's here
+                    would mean an account nobody can get into. */}
+                {parentCredentials && (
+                  <>
+                    <p className="text-[11.5px] font-semibold text-ink-mint">
+                      Guardian account — {parentCredentials.name}
+                    </p>
+                    <div className="bg-surface-light dark:bg-surface-dark rounded-[14px] p-4 flex flex-col gap-3">
+                      <CredentialRow label="Login ID" value={parentCredentials.loginId} />
+                      {parentCredentials.password && (
+                        <>
+                          <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                          <CredentialRow label="Temporary password" value={parentCredentials.password} />
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <Button
                   variant="secondary"
                   block
                   onClick={() => {
                     setGeneratedId(null);
                     setGeneratedPassword(null);
+                    setParentCredentials(null);
                   }}
                 >
                   Done
@@ -948,7 +1316,8 @@ export const AdminRegistration: React.FC = () => {
               <CredentialRow label="Temporary password" value={resetResult.password} />
             </div>
             <InlineNote icon="lock">
-              Hand it over in person or by a channel you trust. They will be asked to change it at first sign-in.
+              Hand it over in person or by a channel you trust. It stays their password until it is reset again — there
+              is no self-service password change yet, so treat this value as a real credential, not a stopgap.
             </InlineNote>
           </div>
         )}

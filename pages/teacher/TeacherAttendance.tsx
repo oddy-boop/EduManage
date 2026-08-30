@@ -9,24 +9,40 @@ import {
   StatTile,
 } from '../../components/ui';
 
-type Status = 'present' | 'late' | 'absent';
+/**
+ * A register records whether the child was in school, nothing finer. "Late" was a
+ * third option that meant present for every calculation that mattered, so it only
+ * made the teacher choose between two answers that behaved identically.
+ *
+ * Any legacy 'late' row is still read as attending — see historyDays and counts —
+ * so old registers keep the same rate they always had.
+ */
+type Status = 'present' | 'absent';
 
 const OPTIONS: { value: Status; label: string }[] = [
   { value: 'present', label: 'Present' },
-  { value: 'late', label: 'Late' },
   { value: 'absent', label: 'Absent' },
 ];
 
-const toneFor = (v: Status): 'success' | 'warning' | 'danger' =>
-  v === 'present' ? 'success' : v === 'late' ? 'warning' : 'danger';
+const toneFor = (v: Status): 'success' | 'danger' => (v === 'present' ? 'success' : 'danger');
 
 export const TeacherAttendance: React.FC = () => {
   const { user } = useAuth();
-  const classes = user?.assignedClasses?.length ? user.assignedClasses : ['Unassigned'];
+
+  /**
+   * Only the classes this teacher is CLASS TEACHER of.
+   *
+   * It used to list every class they teach, so a subject teacher could mark the
+   * daily register for a form class that was not theirs — and two teachers could
+   * overwrite each other's register for the same day. The server now refuses that;
+   * this stops the screen offering it in the first place.
+   */
+  const [formClasses, setFormClasses] = useState<string[] | null>(null);
+  const classes = formClasses ?? [];
 
   // Was pinned to assignedClasses[0], so a teacher with two classes could only
   // ever mark the first one.
-  const [activeClassId, setActiveClassId] = useState(classes[0]);
+  const [activeClassId, setActiveClassId] = useState('');
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,8 +56,19 @@ export const TeacherAttendance: React.FC = () => {
   const isToday = selectedDate === today;
 
   useEffect(() => {
-    if (!user?.uid || activeClassId === 'Unassigned') {
-      if (activeClassId === 'Unassigned') setLoading(false);
+    if (!user?.uid) return;
+    const unsub = firestoreService.getGrades((data: any[]) => {
+      const mine = (data || []).filter((g) => g.classTeacherId === user.uid).map((g) => g.name);
+      setFormClasses(mine);
+      setActiveClassId((prev) => (prev && mine.includes(prev) ? prev : mine[0] || ''));
+      if (mine.length === 0) setLoading(false);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || !activeClassId) {
+      if (formClasses !== null && formClasses.length === 0) setLoading(false);
       return;
     }
     setLoading(true);
@@ -67,11 +94,14 @@ export const TeacherAttendance: React.FC = () => {
   /** Every day this class has a record for, newest first — the history the API
    *  was already returning and the screen used to discard. */
   const historyDays = useMemo(() => {
-    const byDate = new Map<string, { present: number; late: number; absent: number; total: number }>();
+    const byDate = new Map<string, { present: number; absent: number; total: number }>();
     attendance.forEach((a) => {
       if (!a.date) return;
-      const row = byDate.get(a.date) ?? { present: 0, late: 0, absent: 0, total: 0 };
-      if (a.status in row) (row as any)[a.status] += 1;
+      const row = byDate.get(a.date) ?? { present: 0, absent: 0, total: 0 };
+      // Anything that is not an absence counts as attending, which folds in any
+      // 'late' rows recorded before that option was removed.
+      if (a.status === 'absent') row.absent += 1;
+      else row.present += 1;
       row.total += 1;
       byDate.set(a.date, row);
     });
@@ -90,9 +120,10 @@ export const TeacherAttendance: React.FC = () => {
   };
 
   const counts = useMemo(() => {
-    const c = { present: 0, late: 0, absent: 0 };
+    const c = { present: 0, absent: 0 };
     todayByStudent.forEach((s) => {
-      if (s in c) c[s as Status] += 1;
+      if (s === 'absent') c.absent += 1;
+      else c.present += 1;
     });
     return c;
   }, [todayByStudent]);
@@ -179,6 +210,21 @@ export const TeacherAttendance: React.FC = () => {
     );
   }
 
+  // Says why rather than showing an empty class picker. Teaching a class is not the
+  // same as being its class teacher, and only the latter marks the register.
+  if (formClasses !== null && formClasses.length === 0) {
+    return (
+      <WorkSurface>
+        <PageHeader title="Attendance" subtitle="The daily register for your form class" />
+        <EmptyState
+          icon="how_to_reg"
+          title="You are not a class teacher"
+          body="The register is marked by whoever is set as class teacher for a class. Teaching a subject in a class does not include marking its register — ask your administrator if that should be you."
+        />
+      </WorkSurface>
+    );
+  }
+
   return (
     <WorkSurface>
       <PageHeader
@@ -258,9 +304,8 @@ export const TeacherAttendance: React.FC = () => {
         </InlineNote>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <StatTile tint="mint" icon="check_circle" label="Present" value={counts.present} />
-        <StatTile tint="butter" icon="schedule" label="Late" value={counts.late} />
         <StatTile tint="blush" icon="cancel" label="Absent" value={counts.absent} />
         <StatTile tint="plain" icon="pending" label="Not marked" value={unmarked < 0 ? 0 : unmarked} />
       </div>

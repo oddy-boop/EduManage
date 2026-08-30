@@ -3,33 +3,64 @@ import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
 import { Button, Card, EmptyState, Field, InlineNote, Input } from '../../components/ui';
 
-const QUIZ_SECONDS = 14 * 60 + 59;
+/** Used only until the quiz itself is loaded; the real clock comes from the quiz. */
+const DEFAULT_QUIZ_MINUTES = 15;
+
+/** The quiz id from the link the teacher shared: /join-quiz/<id>. */
+const quizIdFromUrl = () => {
+  const m = window.location.pathname.match(/\/join-quiz\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+};
 
 export const StudentQuiz: React.FC = () => {
+  const linkQuizId = useMemo(quizIdFromUrl, []);
+  // Set once the server has confirmed the student ID and that they belong to the
+  // class this quiz was set for. Everything after the gate depends on it.
+  const [ticket, setTicket] = useState<string | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState('');
   const [tempId, setTempId] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [currentQuiz, setCurrentQuiz] = useState<any>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<Set<string>>(new Set());
-  const [timeLeft, setTimeLeft] = useState(QUIZ_SECONDS);
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_QUIZ_MINUTES * 60);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [result, setResult] = useState<{ score: number; correctCount?: number; totalQuestions?: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // The quiz now arrives from the join call, not from a public listing of every
+  // published quiz in the school — which is what this screen used to read, taking
+  // whichever one happened to be first regardless of the link or the student.
   useEffect(() => {
-    // Previously the unsubscribe was returned from inside an async function, so
-    // React never received it and the subscription leaked. Subscribe directly.
-    const unsub = firestoreService.onQuizzesChange((quizzes) => {
-      const published = quizzes.filter((q: any) => q.isPublished);
-      if (published.length > 0) setCurrentQuiz(published[0]);
-      setLoading(false);
-    });
-    return () => unsub();
+    setLoading(false);
   }, []);
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = tempId.trim();
+    if (!id || !linkQuizId || joining) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const res = await firestoreService.joinQuiz(linkQuizId, id);
+      setCurrentQuiz(res.quiz);
+      const minutes = Number(res.quiz?.durationMinutes) || DEFAULT_QUIZ_MINUTES;
+      // One second short of the whole minute so the first tick reads 14:59, not 15:00.
+      setTimeLeft(minutes * 60 - 1);
+      setStudentId(res.student.id);
+      setStudentName(res.student.name);
+      setTicket(res.ticket);
+    } catch (err) {
+      setJoinError(err instanceof Error ? err.message : 'Could not open that quiz.');
+    } finally {
+      setJoining(false);
+    }
+  };
 
   const QUESTIONS: any[] = currentQuiz?.questions || [];
   const currentQuestion = QUESTIONS[currentQuestionIndex];
@@ -40,16 +71,11 @@ export const StudentQuiz: React.FC = () => {
   const submitRef = useRef<() => void>(() => {});
 
   const handleSubmit = async (auto = false) => {
-    if (!currentQuiz || isSubmitted || submitting) return;
+    if (!currentQuiz || !ticket || isSubmitted || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await firestoreService.submitQuizResult({
-        quizId: currentQuiz.id,
-        studentId: studentId as string,
-        studentName: studentName || studentId || undefined,
-        answers,
-      });
+      const res = await firestoreService.submitQuizResult({ ticket: ticket as string, answers });
       // The score is authoritative from the server — the client never holds the
       // correct answers for a quiz it is actively taking.
       setResult(res);
@@ -127,52 +153,52 @@ export const StudentQuiz: React.FC = () => {
         </div>
 
         <div>
-          <h1 className="text-[26px] font-bold tracking-[-0.03em] text-slate-900 dark:text-white">
-            {currentQuiz?.title || 'Class quiz'}
-          </h1>
+          <h1 className="text-[26px] font-bold tracking-[-0.03em] text-slate-900 dark:text-white">Sign in to your quiz</h1>
           <p className="mt-1.5 text-[13px] text-slate-500">
-            {totalQuestions > 0 ? `${totalQuestions} questions · ${Math.round(QUIZ_SECONDS / 60)} minutes` : 'Enter your ID to begin.'}
+            Enter the student ID your school gave you. Only students in the class this quiz was set for can open it.
           </p>
         </div>
 
-        <Card className="flex flex-col gap-4">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (tempId.trim()) setStudentId(tempId.trim());
-            }}
-            className="flex flex-col gap-4"
-          >
-            <Field label="Your student ID">
-              <Input
-                value={tempId}
-                onChange={(e) => setTempId(e.target.value)}
-                placeholder="e.g. STU-2041"
-                autoCapitalize="characters"
-                spellCheck={false}
-                className="h-12 text-[15px]"
-              />
-            </Field>
-            <Field label="Your name" hint="So your teacher knows whose paper this is.">
-              <Input
-                value={studentName}
-                onChange={(e) => setStudentName(e.target.value)}
-                placeholder="Full name"
-                className="h-12 text-[15px]"
-              />
-            </Field>
-            <Button type="submit" block disabled={!tempId.trim() || !currentQuiz} className="h-12 text-sm">
-              Start quiz
-            </Button>
-          </form>
+        {!linkQuizId ? (
+          <EmptyState
+            icon="quiz"
+            title="This page needs a quiz link"
+            body="Open the link or scan the QR code your teacher shared. It points at one specific quiz."
+          />
+        ) : (
+          <Card className="flex flex-col gap-4">
+            <form onSubmit={handleJoin} className="flex flex-col gap-4">
+              <Field label="Your student ID">
+                <Input
+                  value={tempId}
+                  onChange={(e) => {
+                    setTempId(e.target.value);
+                    if (joinError) setJoinError(null);
+                  }}
+                  placeholder="e.g. STU2026001"
+                  autoCapitalize="characters"
+                  autoComplete="username"
+                  spellCheck={false}
+                  className="h-12 text-[15px]"
+                />
+              </Field>
 
-          <InlineNote icon="lock">
-            You get one attempt. Once you submit, your answers are final and go straight to your teacher.
-          </InlineNote>
-        </Card>
+              {joinError && (
+                <InlineNote tone="blush" icon="priority_high">
+                  {joinError}
+                </InlineNote>
+              )}
 
-        {!loading && !currentQuiz && (
-          <EmptyState icon="quiz" title="No quiz is open right now" body="Your teacher has not published a quiz yet. Check the link they gave you." />
+              <Button type="submit" block loading={joining} disabled={!tempId.trim() || joining} className="h-12 text-sm">
+                Start quiz
+              </Button>
+            </form>
+
+            <InlineNote icon="lock">
+              Your name comes from the school register, so there is nothing else to type. You get one attempt — once you
+              submit, your answers are final and go straight to your teacher.
+            </InlineNote>
+          </Card>
         )}
       </div>,
     );

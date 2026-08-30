@@ -155,14 +155,28 @@ export const TeacherAssignments: React.FC = () => {
             </div>
           </Field>
 
-          <Field label="Due date" error={dueMissing ? 'Pick a due date.' : undefined}>
-            <Input
-              type="date"
-              value={formData.dueDate}
-              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-              invalid={dueMissing}
-            />
-          </Field>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {/* Read-only: the date set is stamped by the server when the assignment is
+                created, so it does not depend on the clock of the device used. */}
+            <Field label="Date set" hint="Recorded automatically.">
+              <Input
+                type="date"
+                value={new Date().toISOString().slice(0, 10)}
+                readOnly
+                className="bg-slate-50 dark:bg-slate-900/40"
+              />
+            </Field>
+
+            <Field label="Due date" error={dueMissing ? 'Pick a due date.' : undefined}>
+              <Input
+                type="date"
+                min={new Date().toISOString().slice(0, 10)}
+                value={formData.dueDate}
+                onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                invalid={dueMissing}
+              />
+            </Field>
+          </div>
 
           <Field label="Instructions" hint="Shown to parents on their portal.">
             <Textarea
@@ -201,6 +215,7 @@ export const TeacherAssignments: React.FC = () => {
           ) : (
             sorted.map((a) => {
               const due = a.dueDate ? new Date(a.dueDate) : null;
+              const set = a.dateSet ? new Date(a.dateSet) : a.createdAt ? new Date(a.createdAt) : null;
               const overdue = due ? due.getTime() < Date.now() : false;
               return (
                 <Card key={a.id} className="flex items-start gap-3.5">
@@ -221,6 +236,7 @@ export const TeacherAssignments: React.FC = () => {
                       <p className="mt-1.5 text-[11.5px] leading-relaxed text-slate-500 line-clamp-2">{a.description}</p>
                     )}
                     <p className="mt-1.5 text-[11px] text-slate-400">
+                      {set ? `Set ${set.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })} · ` : ''}
                       {due ? `Due ${due.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}` : 'No due date'}
                     </p>
                   </div>

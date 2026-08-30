@@ -21,7 +21,17 @@ const TONE_HEX = { mint: '#0b7f57', blue: '#195de6', butter: '#a16207', blush: '
 
 const money = (n) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-export function renderReportPdf({ report, student, bands, caMax, examMax, school = {} }) {
+export function renderReportPdf({
+  report,
+  student,
+  bands,
+  caMax,
+  examMax,
+  school = {},
+  signatures = {},
+  classSize = 0,
+  attendance = { present: 0, total: 0 },
+}) {
   const doc = new PDFDocument({ size: 'A4', margin: 46 });
   const W = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const L = doc.page.margins.left;
@@ -67,12 +77,16 @@ export function renderReportPdf({ report, student, bands, caMax, examMax, school
   const scored = rows.filter((r) => r.total != null);
   const average = scored.length ? scored.reduce((a, r) => a + r.total, 0) / scored.length : Number(report.totalScore ?? 0);
 
+  // Two rows of four. A single row could not hold class size, attendance and both
+  // score figures without truncating a long student name.
   const blockTop = doc.y;
-  doc.roundedRect(L, blockTop, W, 54, 8).fill('#f8fafc');
-  const cell = (label, value, i) => {
-    const x = L + 14 + (W / 4) * i;
-    doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7).text(label.toUpperCase(), x, blockTop + 12, { width: W / 4 - 14 });
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(11).text(value, x, blockTop + 26, { width: W / 4 - 14 });
+  const BLOCK_H = 88;
+  doc.roundedRect(L, blockTop, W, BLOCK_H, 8).fill('#f8fafc');
+  const cell = (label, value, col, row = 0) => {
+    const x = L + 14 + (W / 4) * col;
+    const y = blockTop + 12 + row * 40;
+    doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7).text(label.toUpperCase(), x, y, { width: W / 4 - 14 });
+    doc.fillColor(INK).font('Helvetica-Bold').fontSize(11).text(String(value), x, y + 14, { width: W / 4 - 14 });
   };
   // The admission number is the school's own record identifier and is what belongs
   // on a document that goes home. Fall back to the login ID only when a school does
@@ -82,11 +96,23 @@ export function renderReportPdf({ report, student, bands, caMax, examMax, school
   const idLabel = admissionNo ? 'Admission No.' : 'Student ID';
   const idValue = admissionNo || loginId || '—';
 
-  cell('Student', student?.name || report.studentId, 0);
-  cell('Class', student?.classId || '—', 1);
-  cell(idLabel, idValue, 2);
-  cell('Average', `${Math.round(average)}%`, 3);
-  doc.y = blockTop + 54;
+  const totalScore = scored.reduce((a, r) => a + r.total, 0);
+  const attTotal = Number(attendance?.total) || 0;
+  const attPresent = Number(attendance?.present) || 0;
+  const attendanceText = attTotal > 0 ? `${attPresent}/${attTotal} (${Math.round((attPresent / attTotal) * 100)}%)` : '—';
+
+  cell('Student', student?.name || report.studentId, 0, 0);
+  cell('Class', student?.classId || '—', 1, 0);
+  cell(idLabel, idValue, 2, 0);
+  cell('Class size', classSize || '—', 3, 0);
+
+  // Every cell here is computed. Nothing is a placeholder: this document goes home.
+  cell('Attendance', attendanceText, 0, 1);
+  cell('Days present', attTotal > 0 ? attPresent : '—', 1, 1);
+  cell('Days absent', attTotal > 0 ? attTotal - attPresent : '—', 2, 1);
+  cell('Term', report.term || '—', 3, 1);
+
+  doc.y = blockTop + BLOCK_H;
   doc.moveDown(1);
 
   /* ---- subject table ---- */
@@ -143,11 +169,12 @@ export function renderReportPdf({ report, student, bands, caMax, examMax, school
   const overall = gradeFor(average);
   const tiles = [
     ['Subjects', String(scored.length)],
+    ['Total score', scored.length ? `${Math.round(totalScore)} / ${scored.length * 100}` : '—'],
     ['Average', `${Math.round(average)}%`],
     ['Overall grade', overall?.label ?? report.grade ?? '—'],
   ];
   tiles.forEach(([label, value], i) => {
-    const tw = (W - 16) / 3;
+    const tw = (W - 24) / 4;
     const tx = L + i * (tw + 8);
     doc.roundedRect(tx, sumTop, tw, 44, 8).fill('#f1f5f9');
     doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7).text(label.toUpperCase(), tx + 12, sumTop + 10);
@@ -177,14 +204,33 @@ export function renderReportPdf({ report, student, bands, caMax, examMax, school
   doc.moveDown(2);
 
   /* ---- signatures ---- */
+  // A signer's saved signature is drawn above their rule; the parent's slot stays a
+  // blank line, because that one is signed on paper. A signature is only printed
+  // when that person actually signed this report — never borrowed from elsewhere.
   const sigTop = doc.y;
-  ['Class teacher', 'Head teacher', 'Parent / guardian'].forEach((label, i) => {
-    const sw = (W - 32) / 3;
+  const slots = [
+    { label: 'Class teacher', image: signatures.classTeacher, name: signatures.classTeacherName },
+    { label: 'Head teacher', image: signatures.headTeacher, name: signatures.headTeacherName },
+  ];
+  const sw = (W - 16) / 2;
+  slots.forEach((slot, i) => {
     const sx = L + i * (sw + 16);
+    if (slot.image) {
+      try {
+        const b64 = String(slot.image).split(',')[1];
+        // Sits just above the rule, capped so a large drawing cannot overrun the row.
+        doc.image(Buffer.from(b64, 'base64'), sx, sigTop - 16, { fit: [sw - 6, 34], align: 'left' });
+      } catch {
+        // A corrupt stored image must not take the whole report card down with it.
+      }
+    }
     doc.moveTo(sx, sigTop + 20).lineTo(sx + sw, sigTop + 20).lineWidth(0.8).strokeColor('#94a3b8').stroke();
-    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(label, sx, sigTop + 26, { width: sw });
+    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(slot.label, sx, sigTop + 26, { width: sw });
+    if (slot.name) {
+      doc.fillColor('#94a3b8').font('Helvetica').fontSize(7.5).text(slot.name, sx, sigTop + 37, { width: sw });
+    }
   });
-  doc.y = sigTop + 44;
+  doc.y = sigTop + 52;
 
   doc.moveTo(L, doc.y).lineTo(L + W, doc.y).lineWidth(0.5).strokeColor(LINE).stroke();
   doc.fillColor('#94a3b8').font('Helvetica').fontSize(7.5)

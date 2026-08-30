@@ -41,6 +41,13 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [quizTitle, setQuizTitle] = useState('New Assessment');
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
+  // Which class sits this quiz. It used to be pinned to assignedClasses[0] and shown
+  // read-only, so a teacher with more than one class could only ever quiz the first
+  // — and since access is now gated on class, their other classes could never open
+  // anything. It also has to be set: a quiz with no class is one nobody can join.
+  const [classId, setClassId] = useState('');
+  // How long students get. Was a fixed 15 minutes buried in the student screen.
+  const [durationMinutes, setDurationMinutes] = useState(15);
   const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   useEffect(() => {
@@ -55,6 +62,9 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
         setActiveQuizId(draft.id);
         setQuizTitle(draft.title);
         setQuestions(draft.questions || []);
+        // Resume the class the draft was set for, not whatever defaults first.
+        if (draft.classId) setClassId(draft.classId);
+        if (draft.durationMinutes) setDurationMinutes(draft.durationMinutes);
       }
       setLoading(false);
     });
@@ -71,6 +81,12 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
       points: q.points || 1,
     }));
 
+  const myClasses = useMemo(() => user?.assignedClasses ?? [], [user?.assignedClasses]);
+
+  useEffect(() => {
+    if (!classId && myClasses.length > 0) setClassId(myClasses[0]);
+  }, [myClasses, classId]);
+
   const unmarkable = useMemo(() => questions.filter((q) => !isMarkable(q)), [questions]);
   const totalPoints = questions.reduce((a, q) => a + (q.points || 1), 0);
 
@@ -83,12 +99,18 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
       setStatus({ tone: 'bad', text: `${unmarkable.length} question(s) have no correct answer set — they cannot be marked.` });
       return;
     }
+    if (publish && !classId) {
+      setStatus({ tone: 'bad', text: 'Choose the class that will sit this quiz — only that class can open the link.' });
+      return;
+    }
     setSaving(true);
     setStatus(null);
     try {
       if (activeQuizId) {
         await firestoreService.updateQuiz(activeQuizId, {
           title: quizTitle,
+          classId,
+          durationMinutes,
           questions: buildQuestionPayload(),
           ...(publish ? { isPublished: true } : {}),
         });
@@ -96,7 +118,8 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
         const created = await firestoreService.createQuiz({
           title: quizTitle,
           teacherId: user?.uid,
-          classId: user?.assignedClasses?.[0],
+          classId,
+          durationMinutes,
           questions: buildQuestionPayload(),
           isPublished: publish,
         });
@@ -195,8 +218,33 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
         <Field label="Quiz title" className="flex-[2]">
           <Input value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} placeholder="e.g. Algebra — linear equations check" />
         </Field>
-        <Field label="Class" className="flex-1">
-          <Input value={user?.assignedClasses?.[0] || 'Unassigned'} readOnly className="bg-slate-50 dark:bg-slate-900/40" />
+        <Field
+          label="Class"
+          className="flex-1"
+          hint={myClasses.length > 1 ? 'Only this class can open the quiz link.' : undefined}
+        >
+          {myClasses.length === 0 ? (
+            <Input value="No class assigned" readOnly className="bg-slate-50 dark:bg-slate-900/40" />
+          ) : (
+            <Select value={classId} onChange={(e) => setClassId(e.target.value)}>
+              {myClasses.map((c: string) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Time limit" className="w-40" hint="Minutes.">
+          <Input
+            type="number"
+            min={1}
+            max={300}
+            inputMode="numeric"
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(Math.min(300, Math.max(1, Number(e.target.value) || 1)))}
+            className="text-right"
+          />
         </Field>
         <Field label="Total points" className="w-32">
           <Input value={totalPoints} readOnly className="bg-slate-50 dark:bg-slate-900/40 text-right font-semibold" />

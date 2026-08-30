@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS users (
     subjects JSONB DEFAULT '[]'::jsonb,
     assigned_courses JSONB DEFAULT '[]'::jsonb,
     login_id VARCHAR(255),
+    location VARCHAR(255),
+    contact VARCHAR(100),
+    date_of_birth DATE,
+    signature TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     linked_at TIMESTAMP WITH TIME ZONE
@@ -23,6 +27,7 @@ CREATE TABLE IF NOT EXISTS students (
     grade VARCHAR(255),
     admission_number VARCHAR(255),
     age INT,
+    date_of_birth DATE,
     parent_name VARCHAR(255),
     parent_contact VARCHAR(255),
     login_id VARCHAR(255),
@@ -68,6 +73,7 @@ CREATE TABLE IF NOT EXISTS quizzes (
     questions JSONB NOT NULL DEFAULT '[]'::jsonb,
     class_id VARCHAR(255),
     is_published BOOLEAN DEFAULT FALSE,
+    duration_minutes INT DEFAULT 15,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -165,6 +171,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     due_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    date_set DATE DEFAULT CURRENT_DATE,
     teacher_id VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

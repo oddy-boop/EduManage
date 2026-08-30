@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from './Icon';
 import { View } from '../types';
 import { useAuth } from '../lib/AuthContext';
-import { Avatar } from './ui';
+import { Avatar, Drawer } from './ui';
 import { useNotifications, type Notification } from '../lib/useNotifications';
 import { useTheme, type Theme } from '../lib/theme';
+import { ChangePasswordDrawer } from './ChangePassword';
+import { SignaturePad } from './SignaturePad';
 
 /* ---------------------------------------------------------------------------
    Shells
@@ -49,6 +51,7 @@ const ADMIN_NAV: NavEntry[] = [
   { icon: 'dashboard', label: 'Dashboard', view: View.ADMIN_DASHBOARD },
   { icon: 'person_add', label: 'Registration', view: View.ADMIN_REGISTRATION },
   { icon: 'payments', label: 'School Fees', view: View.ADMIN_FEES },
+  { icon: 'how_to_reg', label: 'Attendance', view: View.ADMIN_ATTENDANCE },
   { icon: 'calendar_month', label: 'Academic Calendar', view: View.ADMIN_CALENDAR },
   { icon: 'fact_check', label: 'Report Approvals', view: View.ADMIN_APPROVALS },
   { icon: 'campaign', label: 'Announcements', view: View.ADMIN_ANNOUNCEMENTS },
@@ -96,6 +99,43 @@ const TONE: Record<Notification['tone'], { dot: string; tint: string }> = {
   info: { dot: 'bg-primary', tint: 'bg-tint-blue' },
 };
 
+/** The list itself, so the rail popover and the mobile sheet stay in step. */
+const NotificationList: React.FC<{
+  items: Notification[];
+  loading: boolean;
+  onPick: (v: View) => void;
+}> = ({ items, loading, onPick }) => {
+  if (loading) return <p className="px-2.5 py-4 text-[11.5px] text-slate-400">Checking…</p>;
+  if (items.length === 0) {
+    return (
+      <div className="px-2.5 py-5 text-center">
+        <Icon name="check_circle" className="text-[22px] text-success" />
+        <p className="mt-1.5 text-[12px] font-semibold text-slate-900 dark:text-white">You are all caught up</p>
+        <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">Nothing is waiting on you right now.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {items.map((n) => (
+        <button
+          key={n.id}
+          onClick={() => n.view && onPick(n.view)}
+          className={`text-left rounded-[13px] px-3 py-2.5 transition-colors ${TONE[n.tone].tint} hover:brightness-[0.98] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+        >
+          <div className="flex items-start gap-2.5">
+            <span className={`size-[7px] rounded-full mt-1.5 shrink-0 ${TONE[n.tone].dot}`} />
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-slate-900 dark:text-white leading-snug">{n.title}</p>
+              {n.body && <p className="mt-1 text-[10.5px] text-slate-600 dark:text-slate-400 leading-relaxed">{n.body}</p>}
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+};
+
 /** Rail notifications. Everything shown is derived from live data — see useNotifications. */
 const NotificationsButton: React.FC<{ onNavigate: (v: View) => void }> = ({ onNavigate }) => {
   const { user } = useAuth();
@@ -138,36 +178,14 @@ const NotificationsButton: React.FC<{ onNavigate: (v: View) => void }> = ({ onNa
             Needs your attention
           </p>
 
-          {loading ? (
-            <p className="px-2.5 py-4 text-[11.5px] text-slate-400">Checking…</p>
-          ) : items.length === 0 ? (
-            <div className="px-2.5 py-5 text-center">
-              <Icon name="check_circle" className="text-[22px] text-success" />
-              <p className="mt-1.5 text-[12px] font-semibold text-slate-900 dark:text-white">You are all caught up</p>
-              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">Nothing is waiting on you right now.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {items.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => {
-                    if (n.view) onNavigate(n.view);
-                    setOpen(false);
-                  }}
-                  className={`text-left rounded-[13px] px-3 py-2.5 transition-colors ${TONE[n.tone].tint} hover:brightness-[0.98] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span className={`size-[7px] rounded-full mt-1.5 shrink-0 ${TONE[n.tone].dot}`} />
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-semibold text-slate-900 dark:text-white leading-snug">{n.title}</p>
-                      {n.body && <p className="mt-1 text-[10.5px] text-slate-600 dark:text-slate-400 leading-relaxed">{n.body}</p>}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <NotificationList
+            items={items}
+            loading={loading}
+            onPick={(v) => {
+              onNavigate(v);
+              setOpen(false);
+            }}
+          />
         </div>
       )}
     </div>
@@ -235,10 +253,24 @@ const Rail: React.FC<{
   currentView: View;
   onNavigate: (v: View) => void;
 }> = ({ portal, nav, currentView, onNavigate }) => {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [signing, setSigning] = useState(false);
+  // Only the two roles that actually sign a report card.
+  const canSign = user?.role === 'Teacher' || user?.role === 'Admin';
+  const footerItem =
+    'w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors';
+
+  /*
+   * Three regions, not one long flex column. The rail used to space every child by
+   * 22px and rely on the viewport being tall enough; once notifications, the theme
+   * control, a signature entry and a password entry were added, the last item —
+   * Sign out — fell off the bottom of a laptop screen with no way to reach it.
+   * The nav scrolls; the account block is pinned and always visible.
+   */
   return (
-    <aside className="hidden lg:flex w-64 shrink-0 bg-primary flex-col gap-[22px] px-3.5 pt-6 pb-5">
-      <div className="flex items-center gap-[11px] px-2">
+    <aside className="hidden lg:flex w-64 shrink-0 bg-primary flex-col px-3.5 pt-6 pb-5">
+      <div className="shrink-0 flex items-center gap-[11px] px-2 mb-5">
         <div className="size-9 rounded-[11px] bg-white flex items-center justify-center text-primary">
           <Icon name="school" className="text-[20px]" />
         </div>
@@ -248,58 +280,195 @@ const Rail: React.FC<{
         </div>
       </div>
 
-      <nav className="flex flex-col gap-[3px]">
+      <nav className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-[3px] rail-scroll">
         {nav.map((e) => (
           <RailItem key={e.view} entry={e} active={isActive(e, currentView)} onClick={() => onNavigate(e.view)} />
         ))}
       </nav>
 
-      <div className="h-px bg-white/[0.18] mx-2.5" />
+      <div className="shrink-0 flex flex-col gap-1.5 pt-3 mt-3 border-t border-white/[0.18]">
+        <NotificationsButton onNavigate={onNavigate} />
 
-      <NotificationsButton onNavigate={onNavigate} />
+        <div className="px-0.5 py-1">
+          <ThemeToggle />
+        </div>
 
-      <div className="mt-auto px-0.5">
-        <ThemeToggle />
+        {/* Available in every portal, not just the admin's School Settings page:
+            a teacher or parent handed a temporary password had no way to replace it. */}
+        {canSign && (
+          <button onClick={() => setSigning(true)} className={footerItem}>
+            <Icon name="edit" className="text-[18px]" />
+            My signature
+          </button>
+        )}
+
+        <button onClick={() => setChangingPassword(true)} className={footerItem}>
+          <Icon name="key" className="text-[18px]" />
+          Change password
+        </button>
+
+        <button onClick={() => signOut()} className={footerItem}>
+          <Icon name="logout" className="text-[18px]" />
+          Sign out
+        </button>
       </div>
 
-      <button
-        onClick={() => signOut()}
-        className="w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors"
-      >
-        <Icon name="logout" className="text-[18px]" />
-        Sign out
-      </button>
+      <ChangePasswordDrawer open={changingPassword} onClose={() => setChangingPassword(false)} />
+
+      <Drawer open={signing} onClose={() => setSigning(false)} title="My signature" width={440}>
+        <SignaturePad />
+      </Drawer>
     </aside>
   );
 };
 
 /* --- Mobile bottom tabs --------------------------------------------------- */
 
+/**
+ * Below `lg` the blue rail is hidden, and everything that lived only in it went
+ * with it: notifications, the theme control, change password — and sign out, which
+ * meant a teacher on a phone could not leave their own session. Four nav tabs plus
+ * a "More" sheet puts all of it back within reach.
+ */
 const MobileTabs: React.FC<{ nav: NavEntry[]; currentView: View; onNavigate: (v: View) => void }> = ({
   nav,
   currentView,
   onNavigate,
 }) => {
-  const tabs = nav.slice(0, 5);
+  const { user, signOut } = useAuth();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const canSign = user?.role === 'Teacher' || user?.role === 'Admin';
+  const { items, loading: notifsLoading, count } = useNotifications(
+    user ? { uid: user.uid, role: user.role, name: user.name } : null,
+  );
+
+  const tabs = nav.slice(0, 4);
+  const overflow = nav.slice(4);
+  const inOverflow = overflow.some((e) => isActive(e, currentView));
+
+  const tabClass = (on: boolean) =>
+    `flex-1 min-h-14 flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors ${
+      on ? 'text-primary font-semibold' : 'text-slate-400 font-medium'
+    }`;
+
   return (
-    <nav className="lg:hidden shrink-0 bg-surface-light dark:bg-surface-dark border-t border-slate-100 dark:border-slate-800 flex px-1.5 pt-1 pb-2.5">
-      {tabs.map((e) => {
-        const on = isActive(e, currentView);
-        return (
-          <button
-            key={e.view}
-            onClick={() => onNavigate(e.view)}
-            aria-current={on ? 'page' : undefined}
-            className={`flex-1 min-h-14 flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors ${
-              on ? 'text-primary font-semibold' : 'text-slate-400 font-medium'
-            }`}
-          >
-            <Icon name={e.icon} className="text-[22px]" />
-            <span className="truncate max-w-full px-0.5">{e.label.split(' ')[0]}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <>
+      <nav className="lg:hidden shrink-0 bg-surface-light dark:bg-surface-dark border-t border-slate-100 dark:border-slate-800 flex px-1.5 pt-1 pb-2.5">
+        {tabs.map((e) => {
+          const on = isActive(e, currentView);
+          return (
+            <button
+              key={e.view}
+              onClick={() => onNavigate(e.view)}
+              aria-current={on ? 'page' : undefined}
+              className={tabClass(on)}
+            >
+              <Icon name={e.icon} className="text-[22px]" />
+              <span className="truncate max-w-full px-0.5">{e.label.split(' ')[0]}</span>
+            </button>
+          );
+        })}
+        <button onClick={() => setMoreOpen(true)} aria-label="More" className={`relative ${tabClass(inOverflow)}`}>
+          <Icon name="menu" className="text-[22px]" />
+          {count > 0 && (
+            <span className="absolute top-1.5 right-[22%] min-w-[15px] h-[15px] px-1 rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center">
+              {count}
+            </span>
+          )}
+          <span className="truncate max-w-full px-0.5">More</span>
+        </button>
+      </nav>
+
+      <Drawer open={moreOpen} onClose={() => setMoreOpen(false)} title="More" width={320}>
+        <div className="flex flex-col gap-5">
+          {overflow.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {overflow.map((e) => (
+                <button
+                  key={e.view}
+                  onClick={() => {
+                    onNavigate(e.view);
+                    setMoreOpen(false);
+                  }}
+                  aria-current={isActive(e, currentView) ? 'page' : undefined}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors ${
+                    isActive(e, currentView)
+                      ? 'bg-tint-blue text-ink-blue font-semibold'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/40'
+                  }`}
+                >
+                  <Icon name={e.icon} className="text-[19px]" />
+                  {e.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div>
+            <p className="px-3 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+              Needs your attention
+            </p>
+            <NotificationList
+              items={items}
+              loading={notifsLoading}
+              onPick={(v) => {
+                onNavigate(v);
+                setMoreOpen(false);
+              }}
+            />
+          </div>
+
+          <div>
+            <p className="px-3 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">Appearance</p>
+            <ThemeToggle variant="plain" />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <p className="px-3 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">Account</p>
+            {canSign && (
+              <button
+                onClick={() => {
+                  setMoreOpen(false);
+                  setSigning(true);
+                }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors"
+              >
+                <Icon name="edit" className="text-[19px]" />
+                My signature
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setMoreOpen(false);
+                setChangingPassword(true);
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors"
+            >
+              <Icon name="key" className="text-[19px]" />
+              Change password
+            </button>
+            <button
+              onClick={() => {
+                setMoreOpen(false);
+                signOut();
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-ink-blush hover:bg-tint-blush transition-colors"
+            >
+              <Icon name="logout" className="text-[19px]" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      </Drawer>
+
+      <ChangePasswordDrawer open={changingPassword} onClose={() => setChangingPassword(false)} />
+
+      <Drawer open={signing} onClose={() => setSigning(false)} title="My signature" width={360}>
+        <SignaturePad />
+      </Drawer>
+    </>
   );
 };
 
