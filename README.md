@@ -33,3 +33,4 @@ Fee tracking is a manual ledger only — the system does not process real paymen
    ```
 
 On first run, the backend creates the database schema and seeds a default administrator account. Check the server console output for the generated credentials, and change the password immediately after logging in.
+# EduManage
