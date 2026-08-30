@@ -1,31 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
+import { WorkSurface } from '../../components/Layouts';
+import { Button, Card, Chip, Field, InlineNote, Input, PageHeader, Select, SkeletonTable, type Tint } from '../../components/ui';
+
+const TYPES = [
+  { value: 'event', label: 'General event', tint: 'mint' as Tint, dot: 'bg-event' },
+  { value: 'exam', label: 'Examination', tint: 'butter' as Tint, dot: 'bg-exam' },
+  { value: 'holiday', label: 'Holiday / break', tint: 'blush' as Tint, dot: 'bg-holiday' },
+];
+
+const AUDIENCES = [
+  { value: 'all', label: 'All (teachers & parents)' },
+  { value: 'teachers', label: 'Teachers only' },
+  { value: 'parents', label: 'Parents & students only' },
+];
+
+const typeMeta = (t: string) => TYPES.find((x) => x.value === t) ?? TYPES[0];
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const AdminCalendar: React.FC = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', date: '', type: 'event', audience: 'all' });
+  const [error, setError] = useState<string | null>(null);
+
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
 
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const leadingBlanks = firstOfMonth.getDay(); // 0 = Sunday
+  // Monday-start, to match the mini calendar in the dashboards.
+  const leadingBlanks = (firstOfMonth.getDay() + 6) % 7;
   const monthLabel = firstOfMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   const goToPrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else { setViewMonth(m => m - 1); }
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else setViewMonth((m) => m - 1);
   };
   const goToNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else { setViewMonth(m => m + 1); }
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else setViewMonth((m) => m + 1);
   };
-  const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
+  const goToToday = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+  };
 
   useEffect(() => {
-    // Subscribing to all events
     const unsub = firestoreService.getAllEvents((data) => {
       setEvents(data);
       setLoading(false);
@@ -33,216 +61,252 @@ export const AdminCalendar: React.FC = () => {
     return () => unsub();
   }, []);
 
+  const byDay = useMemo(() => {
+    const m = new Map<number, any[]>();
+    events.forEach((ev) => {
+      const d = new Date(ev.date);
+      if (Number.isNaN(d.getTime())) return;
+      if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) return;
+      const list = m.get(d.getDate()) ?? [];
+      list.push(ev);
+      m.set(d.getDate(), list);
+    });
+    return m;
+  }, [events, viewYear, viewMonth]);
+
   const handleAddEvent = async () => {
-    if (!newEvent.title || !newEvent.date) return;
+    if (!newEvent.title.trim() || !newEvent.date) {
+      setError('A title and a date are both required.');
+      return;
+    }
+    setIsAdding(true);
+    setError(null);
     try {
-        await firestoreService.createEvent(newEvent);
-        setIsAdding(false);
-        setNewEvent({ title: '', date: '', type: 'event', audience: 'all' });
-    } catch (e) {
-        console.error("Failed to add event", e);
+      await firestoreService.createEvent(newEvent);
+      setNewEvent({ title: '', date: '', type: 'event', audience: 'all' });
+    } catch (err) {
+      console.error('Failed to create event:', err);
+      setError('Could not add that event. Try again.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
-  if (loading) {
-     return (
-       <div className="flex items-center justify-center h-full">
-         <Icon name="sync" className="animate-spin text-primary text-4xl" />
-       </div>
-     );
-  }
+  const upcoming = useMemo(
+    () =>
+      events
+        .filter((e) => {
+          const d = new Date(e.date);
+          return !Number.isNaN(d.getTime()) && d.getTime() >= new Date().setHours(0, 0, 0, 0);
+        })
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(0, 5),
+    [events],
+  );
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 h-full flex flex-col">
-      <div className="flex justify-between items-center shrink-0">
-         <div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-               <span className="font-bold text-slate-900 dark:text-white">Admin Portal</span>
-               <span>/</span>
-               <span className="font-medium text-primary">Academic Calendar</span>
-            </div>
-            <div className="flex items-center gap-4">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Calendar</h1>
-            </div>
-         </div>
-         <div className="flex items-center gap-4">
-             <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                 <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-red-500"></span> Holiday</span>
-                 <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-amber-500"></span> Exam</span>
-                 <span className="flex items-center gap-1"><span className="size-2 rounded-full bg-green-500"></span> Event</span>
-             </div>
-             <button 
-                onClick={() => setIsAdding(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors"
+    <WorkSurface>
+      <PageHeader
+        title="Academic Calendar"
+        subtitle="Events, exams and holidays — each published to a chosen audience"
+        actions={
+          <Button variant="secondary" onClick={goToToday}>
+            Today
+          </Button>
+        }
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_372px]">
+        <Card className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={goToPrevMonth}
+                aria-label="Previous month"
+                className="size-8 rounded-[10px] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                  <Icon name="event" /> Add Event
+                <Icon name="chevron_left" className="text-[16px]" />
               </button>
-         </div>
-      </div>
+              <p className="text-[17px] font-bold tracking-[-0.025em] text-slate-900 dark:text-white">{monthLabel}</p>
+              <button
+                type="button"
+                onClick={goToNextMonth}
+                aria-label="Next month"
+                className="size-8 rounded-[10px] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <Icon name="chevron_right" className="text-[16px]" />
+              </button>
+            </div>
+            <div className="hidden sm:flex gap-3.5">
+              {TYPES.map((t) => (
+                <span key={t.value} className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                  <span className={`size-2.5 rounded-[3px] ${t.dot}`} />
+                  {t.label.split(' ')[0]}
+                </span>
+              ))}
+            </div>
+          </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-8">
-          {/* Calendar View Placeholder (Simplified for logic transition) */}
-          <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">{monthLabel}</h3>
-                  <div className="flex items-center gap-2">
-                      <button onClick={goToToday} className="px-3 py-1.5 text-[10px] font-black uppercase text-primary hover:bg-primary/5 rounded-lg">Today</button>
-                      <button onClick={goToPrevMonth} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">
-                          <Icon name="chevron_left" className="text-lg" />
-                      </button>
-                      <button onClick={goToNextMonth} className="size-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">
-                          <Icon name="chevron_right" className="text-lg" />
-                      </button>
+          <div className="grid grid-cols-7 gap-1.5">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => (
+              <span
+                key={d}
+                className={`text-[10.5px] font-semibold text-center pb-1 ${i === 5 ? 'text-orange-500' : i === 6 ? 'text-danger' : 'text-slate-400'}`}
+              >
+                {d}
+              </span>
+            ))}
+
+            {Array.from({ length: leadingBlanks }).map((_, i) => (
+              <div key={`blank-${i}`} className="min-h-[92px] rounded-[13px] bg-slate-50/60 dark:bg-slate-900/20" />
+            ))}
+
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dayEvents = byDay.get(day) ?? [];
+              const isToday =
+                viewYear === today.getFullYear() && viewMonth === today.getMonth() && day === today.getDate();
+              const dateStr = iso(new Date(viewYear, viewMonth, day));
+              const selected = newEvent.date === dateStr;
+              return (
+                <div
+                  key={day}
+                  className={`relative min-h-[92px] rounded-[13px] p-2 flex flex-col gap-1.5 ${
+                    isToday
+                      ? 'bg-tint-blue outline outline-[1.5px] -outline-offset-[1.5px] outline-primary'
+                      : selected
+                        ? 'bg-tint-blue'
+                        : 'bg-slate-50 dark:bg-slate-900/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <span className={`text-[11.5px] ${isToday ? 'font-bold text-primary' : 'text-slate-600 dark:text-slate-400'}`}>
+                      {day}
+                    </span>
+                    {/* Always visible with a label — a hover-only affordance is
+                        unreachable by keyboard and invisible on touch. */}
+                    <button
+                      type="button"
+                      onClick={() => setNewEvent({ ...newEvent, date: dateStr })}
+                      aria-label={`Add an event on ${monthLabel.split(' ')[0]} ${day}`}
+                      className="size-6 flex items-center justify-center rounded-full bg-white dark:bg-slate-800 text-primary hover:bg-primary hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                    >
+                      <Icon name="add" className="text-[13px]" />
+                    </button>
                   </div>
-              </div>
-              <div className="grid grid-cols-7 mb-4 text-center border-b border-slate-100 dark:border-slate-700 pb-2">
-                  {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-                      <div key={day} className="text-[10px] font-black text-slate-400 py-2">{day}</div>
-                  ))}
-              </div>
-              <div className="flex-1 grid grid-cols-7 gap-2">
-                  {[...Array(leadingBlanks)].map((_, i) => (
-                      <div key={`blank-${i}`} className="min-h-[80px]" />
-                  ))}
-                  {[...Array(daysInMonth)].map((_, i) => {
-                      const day = i + 1;
-                      const isToday = viewYear === today.getFullYear() && viewMonth === today.getMonth() && day === today.getDate();
-                      const dayEvents = events.filter(e => {
-                        const date = new Date(e.date);
-                        return date.getFullYear() === viewYear && date.getMonth() === viewMonth && date.getDate() === day;
-                      });
-
+                  <div className="flex flex-col gap-1">
+                    {dayEvents.slice(0, 2).map((ev, k) => {
+                      const meta = typeMeta(ev.type);
                       return (
-                          <div key={day} className={`border rounded-lg p-2 min-h-[80px] hover:border-primary transition-all group relative ${isToday ? 'border-primary bg-primary/5' : 'border-slate-100 dark:border-slate-700/50'}`}>
-                              <span className={`text-xs font-bold ${isToday ? 'text-primary' : 'text-slate-500'}`}>{day}</span>
-                              <div className="mt-1 space-y-1">
-                                {dayEvents.map((e, idx) => (
-                                  <div
-                                    key={idx}
-                                    title={e.title}
-                                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold truncate ${
-                                      e.type === 'holiday' ? 'bg-red-50 text-red-600' :
-                                      e.type === 'exam' ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'
-                                    }`}
-                                  >
-                                    {e.title}
-                                  </div>
-                                ))}
-                              </div>
-                              <button
-                                onClick={() => {
-                                  const date = new Date(viewYear, viewMonth, day);
-                                  setNewEvent({ ...newEvent, date: date.toISOString().split('T')[0] });
-                                  setIsAdding(true);
-                                }}
-                                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 size-5 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-primary"
-                              >
-                                <Icon name="add" className="text-[10px]" />
-                              </button>
-                          </div>
+                        <span
+                          key={ev.id ?? k}
+                          title={ev.title}
+                          className={`text-[9.5px] font-semibold text-white rounded-md px-1.5 py-[3px] truncate ${meta.dot}`}
+                        >
+                          {ev.title}
+                        </span>
                       );
-                  })}
-              </div>
-          </div>
-
-          <div className="w-80 space-y-6 shrink-0">
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                  <h3 className="font-bold text-slate-900 dark:text-white mb-6">Upcoming Events</h3>
-                  <div className="space-y-6">
-                      {events.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(0,5).map((evt, i) => (
-                          <div key={i} className="flex gap-4 group">
-                              <div className="flex flex-col items-center justify-center size-12 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shrink-0">
-                                  <span className="text-[10px] font-black text-primary uppercase">{new Date(evt.date).toLocaleString('default', { month: 'short' })}</span>
-                                  <span className="text-lg font-black text-slate-900 dark:text-white leading-none">{new Date(evt.date).getDate()}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                  <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-primary transition-colors">{evt.title}</h4>
-                                  <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-2 mt-1">
-                                    <span className={`size-1.5 rounded-full ${
-                                      evt.type === 'holiday' ? 'bg-red-500' : 
-                                      evt.type === 'exam' ? 'bg-amber-500' : 'bg-green-500'
-                                    }`}></span>
-                                    {evt.type}
-                                  </p>
-                              </div>
-                          </div>
-                      ))}
-                      {events.length === 0 && (
-                        <div className="text-center py-8 text-slate-400 italic text-xs">No upcoming events scheduled.</div>
-                      )}
+                    })}
+                    {dayEvents.length > 2 && (
+                      <span className="text-[9.5px] text-slate-400 px-1">+{dayEvents.length - 2} more</span>
+                    )}
                   </div>
-              </div>
-
-              <div className="bg-primary text-white rounded-xl p-6 shadow-lg">
-                  <h3 className="font-bold mb-2">School-wide Sync</h3>
-                  <p className="text-[10px] text-blue-100 opacity-80 leading-relaxed">Changes made to the academic calendar are instantly pushed to Parent and Teacher dashboards.</p>
-              </div>
+                </div>
+              );
+            })}
           </div>
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <Card className="flex flex-col gap-4">
+            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Add an event</p>
+
+            <Field label="Title">
+              <Input
+                value={newEvent.title}
+                onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                placeholder="e.g. Science Fair"
+              />
+            </Field>
+
+            <Field label="Date">
+              <Input type="date" value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} />
+            </Field>
+
+            <Field label="Type">
+              <div className="flex flex-wrap gap-2">
+                {TYPES.map((t) => (
+                  <Chip key={t.value} active={newEvent.type === t.value} onClick={() => setNewEvent({ ...newEvent, type: t.value })}>
+                    {t.label}
+                  </Chip>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Who sees it" hint="Decides which dashboards and calendars this appears on.">
+              <Select value={newEvent.audience} onChange={(e) => setNewEvent({ ...newEvent, audience: e.target.value })}>
+                {AUDIENCES.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {a.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {error && <InlineNote tone="blush" icon="priority_high">{error}</InlineNote>}
+
+            <InlineNote icon="info">
+              This is not a notification — nobody is alerted. It appears on the calendars of the audience you choose.
+            </InlineNote>
+
+            <div className="flex gap-2.5">
+              <Button
+                variant="secondary"
+                block
+                onClick={() => {
+                  setNewEvent({ title: '', date: '', type: 'event', audience: 'all' });
+                  setError(null);
+                }}
+              >
+                Clear
+              </Button>
+              <Button block icon="add" loading={isAdding} onClick={handleAddEvent}>
+                Add to calendar
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="flex flex-col gap-3">
+            <p className="text-[13.5px] font-semibold text-slate-900 dark:text-white">Coming up</p>
+            {loading ? (
+              <SkeletonTable rows={3} />
+            ) : upcoming.length === 0 ? (
+              <p className="text-[11.5px] text-slate-400 leading-relaxed">
+                Nothing scheduled ahead. Add an exam, holiday or event and it appears on everyone&rsquo;s calendar.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {upcoming.map((ev, i) => {
+                  const meta = typeMeta(ev.type);
+                  const d = new Date(ev.date);
+                  return (
+                    <div key={ev.id ?? i} className="flex items-center gap-2.5 bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3 py-2.5">
+                      <span className={`w-1 self-stretch rounded-full ${meta.dot}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-semibold text-slate-900 dark:text-white truncate">{ev.title}</p>
+                        <p className="text-[10.5px] text-slate-500">
+                          {d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · {ev.audience || 'all'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
-
-      {isAdding && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-8 border border-slate-200 dark:border-slate-700">
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">Create New Event</h3>
-                      <button onClick={() => setIsAdding(false)} className="text-slate-400 hover:text-red-500"><Icon name="close" /></button>
-                  </div>
-                  <div className="space-y-4">
-                      <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase">Event Title</label>
-                          <input 
-                            type="text" 
-                            className="w-full mt-1 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 ring-primary"
-                            placeholder="e.g. Science Fair"
-                            value={newEvent.title}
-                            onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
-                          />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase">Date</label>
-                            <input 
-                                type="date" 
-                                className="w-full mt-1 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 ring-primary"
-                                value={newEvent.date}
-                                onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase">Type</label>
-                            <select 
-                                className="w-full mt-1 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 ring-primary"
-                                value={newEvent.type}
-                                onChange={(e) => setNewEvent({...newEvent, type: e.target.value})}
-                            >
-                                <option value="event">General Event</option>
-                                <option value="holiday">Holiday / Break</option>
-                                <option value="exam">Examination</option>
-                            </select>
-                          </div>
-                      </div>
-                      <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase">Audience Visibility</label>
-                          <select 
-                              className="w-full mt-1 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 ring-primary font-bold"
-                              value={newEvent.audience}
-                              onChange={(e) => setNewEvent({...newEvent, audience: e.target.value})}
-                          >
-                              <option value="all">All (Teachers & Parents)</option>
-                              <option value="teachers">Teachers Only</option>
-                              <option value="parents">Parents & Students Only</option>
-                          </select>
-                      </div>
-                      <button 
-                        onClick={handleAddEvent}
-                        className="w-full py-4 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 mt-4 transition-all"
-                      >
-                          Add to Calendar
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-    </div>
+    </WorkSurface>
   );
 };

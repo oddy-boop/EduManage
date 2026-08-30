@@ -1,0 +1,277 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .th { font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase; }
+    .inp { height: 36px; border-radius: 10px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #0f172a; }
+    .band { display: grid; grid-template-columns: 22px 92px 74px 74px minmax(0, 1fr) 34px; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 13px; }
+    .btn-p { height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); }
+    .btn-s { height: 38px; padding: 0 16px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .tab { font-size: 12.5px; font-weight: 500; color: #64748b; padding: 9px 16px; border-radius: 11px; }
+    .tab.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 1000px; display: flex; background: #f8fafc; overflow: hidden;">
+
+  <aside style="width: 256px; flex-shrink: 0; background: #195de6; display: flex; flex-direction: column; padding: 24px 14px 20px; gap: 22px;">
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+        <span style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.62); letter-spacing: 0.09em; text-transform: uppercase;">Admin Portal</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Dashboard</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3 19.6a6.5 6.5 0 0 1 13 0"/><path d="M18.5 8.5v5M16 11h5"/></svg>Registration</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>School Fees</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.4"/><path d="M3.5 10h17"/><path d="M8 3v4M16 3v4"/></svg>Academic Calendar</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2.2"/><path d="M9.5 4V3.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V4"/><path d="M9.2 13.2l2.1 2.1 4-4.4"/></svg>Report Approvals<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">7</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M4 10v4a1 1 0 0 0 1 1h2.2l7 4V5L7.2 9H5a1 1 0 0 0-1 1z"/><path d="M18 9.2a4 4 0 0 1 0 5.6"/></svg>Announcements</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M3.6 12a8.4 8.4 0 1 0 2.6-6"/><path d="M3.2 4.2v5h5"/><path d="M12 7.6V12l3 2"/></svg>Audit Logs</div>
+      <div class="navi on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>School Settings</div>
+    </nav>
+    <div style="height: 1px; background: rgba(255,255,255,0.18); margin: 0 10px;"></div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>Notifications<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">12</span></div>
+    </nav>
+    <div style="margin-top: auto;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M9.5 20.5H6.4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.1"/><path d="M16 16.5l4.5-4.5L16 7.5"/><path d="M20.5 12H9.5"/></svg>Sign out</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 26px 30px 26px; gap: 16px; overflow: hidden;">
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em;">School Settings</h1>
+        <p style="margin: 0; font-size: 12.5px; color: #64748b;">Riverside Academy &bull; changes apply from the next report batch onward</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div class="btn-s">Discard changes</div>
+        <div class="btn-p"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg>Save grading scale</div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: 14px; align-self: flex-start;">
+      <span class="tab">Class levels</span>
+      <span class="tab">Subjects &amp; courses</span>
+      <span class="tab on">Grading scale</span>
+      <span class="tab">Terms &amp; promotion</span>
+      <span class="tab">System</span>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 386px; gap: 16px;">
+
+      <div style="display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+
+        <div style="background: #ffffff; border-radius: 20px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25);">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+            <div>
+              <p style="margin: 0; font-size: 14px; font-weight: 600;">Assessment weighting</p>
+              <p style="margin: 3px 0 0; font-size: 11.5px; color: #64748b;">How a subject total is made up. Teachers cannot enter a score above these maximums.</p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-end; gap: 12px; margin-top: 14px;">
+            <div style="width: 152px; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11.5px; font-weight: 500; color: #334155;">Continuous assessment</span>
+              <div class="inp" style="justify-content: space-between; font-weight: 600;">40<span style="font-size: 11px; color: #94a3b8; font-weight: 400;">marks</span></div>
+            </div>
+            <span style="font-size: 16px; color: #cbd5e1; padding-bottom: 8px;">+</span>
+            <div style="width: 152px; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11.5px; font-weight: 500; color: #334155;">Terminal exam</span>
+              <div class="inp" style="justify-content: space-between; font-weight: 600;">60<span style="font-size: 11px; color: #94a3b8; font-weight: 400;">marks</span></div>
+            </div>
+            <span style="font-size: 16px; color: #cbd5e1; padding-bottom: 8px;">=</span>
+            <div style="width: 152px; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11.5px; font-weight: 500; color: #334155;">Subject total</span>
+              <div class="inp" style="justify-content: space-between; background: #f8fafc; border-color: #f1f5f9; font-weight: 700;">100<span style="font-size: 11px; color: #94a3b8; font-weight: 400;">computed</span></div>
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11.5px; font-weight: 500; color: #334155;">Pass mark</span>
+              <div class="inp" style="justify-content: space-between; font-weight: 600;">45<span style="font-size: 11px; color: #94a3b8; font-weight: 400;">and above</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-height: 0; background: #ffffff; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); display: flex; flex-direction: column; overflow: hidden;">
+
+          <div style="padding: 18px 20px 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+            <div>
+              <p style="margin: 0; font-size: 14px; font-weight: 600;">Grading bands</p>
+              <p style="margin: 3px 0 0; font-size: 11.5px; color: #64748b;">Drag to reorder. Every mark from 0 to 100 must fall in exactly one band.</p>
+            </div>
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: #195de6; background: #eaf0fe; padding: 8px 14px; border-radius: 10px;"><svg class="ico" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></svg>Add band</span>
+          </div>
+
+          <div style="padding: 0 20px 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; background: #fdf6e3; border-radius: 13px; padding: 11px 14px;">
+              <svg class="ico" style="width: 17px; height: 17px; color: #a16207; flex-shrink: 0;" viewBox="0 0 24 24"><path d="M12 8v5"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor" stroke="none"/><path d="M12 3.5l9 15.5H3z"/></svg>
+              <p style="margin: 0; font-size: 11.5px; color: #7a5410; line-height: 1.5;"><span style="font-weight: 600;">Marks 40&ndash;44 are not covered by any band.</span> A student scoring in that range would print with no grade. Add a band or widen D7.</p>
+            </div>
+          </div>
+
+          <div style="padding: 0 20px 10px;">
+            <div style="display: flex; height: 26px; border-radius: 8px; overflow: hidden; gap: 1px;">
+              <span style="width: 39%; background: #ef4444;"></span>
+              <span style="width: 5%; background: repeating-linear-gradient(45deg, #fde3aa, #fde3aa 4px, #fdf6e3 4px, #fdf6e3 8px); border-top: 1.5px solid #d9a441; border-bottom: 1.5px solid #d9a441;"></span>
+              <span style="width: 5%; background: #f59e0b;"></span>
+              <span style="width: 15%; background: #f59e0b;"></span>
+              <span style="width: 5%; background: #f59e0b;"></span>
+              <span style="width: 10%; background: #195de6;"></span>
+              <span style="width: 21%; background: #10b981;"></span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+              <span style="font-size: 10px; color: #94a3b8;">0</span>
+              <span style="font-size: 10px; color: #a16207; font-weight: 600;">gap 40&ndash;44</span>
+              <span style="font-size: 10px; color: #94a3b8;">100</span>
+            </div>
+          </div>
+
+          <div style="flex: 1; min-height: 0; padding: 0 14px; display: flex; flex-direction: column; gap: 3px;">
+            <div class="band" style="padding-bottom: 4px;">
+              <span></span><span class="th">Label</span><span class="th">From</span><span class="th">To</span><span class="th">Description on the report card</span><span></span>
+            </div>
+
+            <div class="band" style="background: #f8fafc;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #cbd5e1;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #10b981; flex-shrink: 0;"></span><span style="font-weight: 600;">A1</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">80</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">100</div>
+              <div class="inp">Excellent</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+
+            <div class="band" style="background: #f8fbff; outline: 1.5px solid #195de6; outline-offset: -1.5px;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #94a3b8;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px; border-color: #195de6;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #195de6; flex-shrink: 0;"></span><span style="font-weight: 600;">B2</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600; border-color: #195de6; box-shadow: 0 0 0 3px rgba(25,93,230,0.12);">70</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">79</div>
+              <div class="inp">Very good</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+
+            <div class="band" style="background: #f8fafc;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #cbd5e1;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #195de6; flex-shrink: 0;"></span><span style="font-weight: 600;">B3</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">65</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">69</div>
+              <div class="inp">Good</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+
+            <div class="band" style="background: #f8fafc;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #cbd5e1;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #f59e0b; flex-shrink: 0;"></span><span style="font-weight: 600;">C4</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">50</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">64</div>
+              <div class="inp">Credit</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+
+            <div class="band" style="background: #fdf6e3;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #d9bf82;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #f59e0b; flex-shrink: 0;"></span><span style="font-weight: 600;">D7</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">45</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600; border-color: #d9a441;">49</div>
+              <div class="inp">Pass</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+
+            <div class="band" style="background: #f8fafc;">
+              <svg class="ico" style="width: 15px; height: 15px; color: #cbd5e1;" viewBox="0 0 24 24"><path d="M8 7h8M8 12h8M8 17h8"/></svg>
+              <div class="inp" style="gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #ef4444; flex-shrink: 0;"></span><span style="font-weight: 600;">F9</span></div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">0</div>
+              <div class="inp" style="justify-content: flex-end; font-weight: 600;">39</div>
+              <div class="inp">Fail</div>
+              <span style="display: flex; justify-content: center; color: #cbd5e1;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5.4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.9 12a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+
+        <div style="background: #ffffff; border-radius: 20px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25);">
+          <p style="margin: 0; font-size: 14px; font-weight: 600;">Live preview</p>
+          <p style="margin: 3px 0 0; font-size: 11.5px; color: #64748b;">How this scale renders on a report card.</p>
+          <div style="margin-top: 14px; border: 1px solid #e2e8f0; border-radius: 13px; overflow: hidden;">
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 46px 46px 52px; background: #195de6; padding: 8px 12px; gap: 8px;">
+              <span style="font-size: 9.5px; font-weight: 600; color: #ffffff; letter-spacing: 0.05em; text-transform: uppercase;">Subject</span>
+              <span style="font-size: 9.5px; font-weight: 600; color: #ffffff; letter-spacing: 0.05em; text-transform: uppercase; text-align: right;">CA</span>
+              <span style="font-size: 9.5px; font-weight: 600; color: #ffffff; letter-spacing: 0.05em; text-transform: uppercase; text-align: right;">Exam</span>
+              <span style="font-size: 9.5px; font-weight: 600; color: #ffffff; letter-spacing: 0.05em; text-transform: uppercase; text-align: center;">Grade</span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 46px 46px 52px; padding: 9px 12px; gap: 8px; border-bottom: 1px solid #f1f5f9;">
+              <span style="font-size: 11.5px; font-weight: 500;">Mathematics</span><span style="font-size: 11.5px; color: #475569; text-align: right;">35</span><span style="font-size: 11.5px; color: #475569; text-align: right;">53</span>
+              <span style="text-align: center;"><span style="font-size: 10.5px; font-weight: 700; color: #0b7f57; background: #e8f6ee; padding: 3px 9px; border-radius: 999px;">A1</span></span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 46px 46px 52px; padding: 9px 12px; gap: 8px; border-bottom: 1px solid #f1f5f9;">
+              <span style="font-size: 11.5px; font-weight: 500;">English</span><span style="font-size: 11.5px; color: #475569; text-align: right;">31</span><span style="font-size: 11.5px; color: #475569; text-align: right;">48</span>
+              <span style="text-align: center;"><span style="font-size: 10.5px; font-weight: 700; color: #195de6; background: #eaf0fe; padding: 3px 9px; border-radius: 999px;">B2</span></span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) 46px 46px 52px; padding: 9px 12px; gap: 8px; background: #fdf6e3;">
+              <span style="font-size: 11.5px; font-weight: 500;">Social Studies</span><span style="font-size: 11.5px; color: #475569; text-align: right;">18</span><span style="font-size: 11.5px; color: #475569; text-align: right;">24</span>
+              <span style="text-align: center;"><span style="font-size: 10.5px; font-weight: 700; color: #a16207; background: #ffffff; padding: 3px 9px; border-radius: 999px;">?</span></span>
+            </div>
+          </div>
+          <p style="margin: 10px 0 0; font-size: 11px; color: #a16207; line-height: 1.5;">Social Studies totals 42 &mdash; inside the uncovered gap, so it prints without a grade.</p>
+        </div>
+
+        <div style="background: #fdecef; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 9px;">
+            <span style="width: 24px; height: 24px; border-radius: 8px; background: #ef4444; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg class="ico" style="width: 14px; height: 14px;" viewBox="0 0 24 24"><path d="M12 8v5"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor" stroke="none"/><path d="M12 3.5l9 15.5H3z"/></svg></span>
+            <p style="margin: 0; font-size: 13px; font-weight: 600; color: #be1e51;">Changing a live scale</p>
+          </div>
+          <p style="margin: 0; font-size: 11.5px; color: #7d1c3c; line-height: 1.6;"><span style="font-weight: 600;">12 report batches</span> have already been published against the current scale. Editing bands does not rewrite them &mdash; a released card keeps the grade it was printed with.</p>
+          <p style="margin: 0; font-size: 11.5px; color: #7d1c3c; line-height: 1.6;">The new scale applies to every batch approved from now on. The change is written to the audit log with your name.</p>
+        </div>
+
+        <div style="background: #ffffff; border-radius: 20px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); flex: 1; min-height: 0;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600;">Where this scale is used</p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 13px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 30px; height: 30px; border-radius: 10px; background: #eaf0fe; color: #195de6; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M4 19.5h16"/><path d="M6 15l4-5 3 3 5-7.5"/></svg></span>
+              <span style="font-size: 12px; color: #475569;">Teacher &rsaquo; Report Generation</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 30px; height: 30px; border-radius: 10px; background: #eaf0fe; color: #195de6; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2.2"/><path d="M9.2 13.2l2.1 2.1 4-4.4"/></svg></span>
+              <span style="font-size: 12px; color: #475569;">Admin &rsaquo; Report Approvals</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 30px; height: 30px; border-radius: 10px; background: #eaf0fe; color: #195de6; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/></svg></span>
+              <span style="font-size: 12px; color: #475569;">Parent &rsaquo; Report card &amp; PDF</span>
+            </div>
+          </div>
+          <div style="margin-top: 14px; padding-top: 13px; border-top: 1px solid #f1f5f9;">
+            <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.6;">Last edited by Daniel Adjei on 12 August 2026.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

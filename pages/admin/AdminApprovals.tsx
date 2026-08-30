@@ -1,165 +1,401 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/Icon';
-import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Avatar, Badge, Button, Card, Drawer, EmptyState, InlineNote, PageHeader, SkeletonTable, StatTile, Td, Th,
+} from '../../components/ui';
+import { firestoreService as svc } from '../../lib/services';
+import { PASS_MARK, SUBJECT_MAX, gradeFor, useGradingScale } from '../../lib/grading';
+
+interface Batch {
+  key: string;
+  classId: string;
+  term: string;
+  reports: any[];
+  average: number;
+  belowPass: number;
+}
 
 export const AdminApprovals: React.FC = () => {
-  const { user } = useAuth();
+  useGradingScale(); // re-render if an admin changes the scale while this is open
   const [submissions, setSubmissions] = useState<any[]>([]);
-  const [activeReport, setActiveReport] = useState<any>(null);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [acting, setActing] = useState(false);
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const [detail, setDetail] = useState<any>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  /**
+   * report.grades arrives in two shapes depending on which workflow wrote it:
+   *   { Mathematics: { ca, exam, score, remarks } }   — finalized by a class teacher
+   *   { Mathematics: { grade, score, remarks } }      — older rows, no CA/exam split
+   * Render whichever is present rather than assuming.
+   */
+  const subjectRows = (r: any) =>
+    Object.entries(r?.grades || {}).map(([subject, v]: [string, any]) => {
+      const ca = v?.ca != null ? Number(v.ca) : null;
+      const exam = v?.exam != null ? Number(v.exam) : null;
+      const total = v?.score != null ? Number(v.score) : ca != null && exam != null ? ca + exam : null;
+      return { subject, ca, exam, total, remarks: v?.remarks || '' };
+    });
+
+  const downloadPreview = async (reportId: string) => {
+    setDownloading(true);
+    setStatus(null);
+    try {
+      await svc.downloadReportPdf(reportId);
+    } catch (err) {
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not download that report.' });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
-    // Reports with 'pending' status need admin approval
     const unsub = firestoreService.getReportsByStatus('pending', (data) => {
       setSubmissions(data);
-      if (data.length > 0 && !activeReport) {
-        setActiveReport(data[0]);
-      }
       setLoading(false);
     });
     return () => unsub();
-  }, [activeReport]);
+  }, []);
 
-  const handleAction = async (reportId: string, status: 'published' | 'rejected') => {
+  /**
+   * A class teacher finalises a whole CLASS at once, so that is the unit an admin
+   * approves. The queue used to be a flat list of individual students, which meant
+   * releasing one class took as many clicks as it had pupils.
+   */
+  const batches = useMemo<Batch[]>(() => {
+    const map = new Map<string, any[]>();
+    submissions.forEach((r) => {
+      const key = `${r.classId || 'Unassigned'}|${r.term || 'Unknown term'}`;
+      (map.get(key) ?? map.set(key, []).get(key)!).push(r);
+    });
+    return [...map.entries()]
+      .map(([key, reports]) => {
+        const [classId, term] = key.split('|');
+        const scored = reports.filter((r) => r.totalScore != null);
+        return {
+          key,
+          classId,
+          term,
+          reports: [...reports].sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '')),
+          average: scored.length ? Math.round((scored.reduce((a, r) => a + Number(r.totalScore), 0) / scored.length) * 10) / 10 : 0,
+          belowPass: reports.filter((r) => r.totalScore != null && Number(r.totalScore) < PASS_MARK).length,
+        };
+      })
+      .sort((a, b) => a.classId.localeCompare(b.classId) || a.term.localeCompare(b.term));
+  }, [submissions]);
+
+  useEffect(() => {
+    setActiveKey((prev) => (prev && batches.some((b) => b.key === prev) ? prev : batches[0]?.key ?? null));
+  }, [batches]);
+
+  const active = batches.find((b) => b.key === activeKey) ?? null;
+
+  const act = async (reports: any[], next: 'published' | 'rejected', label: string) => {
+    const verb = next === 'published' ? 'Approve and release' : 'Return to the class teacher';
+    if (!window.confirm(`${verb} ${label}? ${next === 'published' ? 'Parents will see it immediately.' : ''}`)) return;
+    setActing(true);
+    setStatus(null);
     try {
-      setActionLoading(true);
-      await firestoreService.updateReportStatus(reportId, status);
-      if (activeReport?.id === reportId) {
-        setActiveReport(null);
+      const results = await Promise.allSettled(reports.map((r) => firestoreService.updateReportStatus(r.id, next)));
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        setStatus({ tone: 'bad', text: `${reports.length - failed} of ${reports.length} went through. ${failed} failed — try again.` });
+      } else {
+        setStatus({
+          tone: 'ok',
+          text: next === 'published'
+            ? `Released ${reports.length} report${reports.length === 1 ? '' : 's'}. Parents can see them now.`
+            : `Returned ${reports.length} report${reports.length === 1 ? '' : 's'} to the class teacher.`,
+        });
       }
     } catch (error) {
-      console.error("Failed to update report status:", error);
+      console.error('Failed to update report status:', error);
+      setStatus({ tone: 'bad', text: 'That did not go through. Nothing was changed — try again.' });
     } finally {
-      setActionLoading(false);
+      setActing(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-64 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={4} />
+      </WorkSurface>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6 shrink-0">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-             <span className="font-bold text-slate-900 dark:text-white">Admin Portal</span>
-             <span>/</span>
-             <span className="font-medium text-primary">Report Card Approvals</span>
+    <WorkSurface>
+      <PageHeader
+        title="Report Approvals"
+        subtitle={
+          batches.length
+            ? `${submissions.length} report${submissions.length === 1 ? '' : 's'} across ${batches.length} class ${batches.length === 1 ? 'batch' : 'batches'}`
+            : undefined
+        }
+        actions={
+          status && (
+            <span className={`text-[11.5px] flex items-center gap-1.5 ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+              <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+              {status.text}
+            </span>
+          )
+        }
+      />
+
+      {batches.length === 0 ? (
+        <EmptyState
+          icon="fact_check"
+          title="Nothing waiting on you"
+          body="When class teachers finalise a class, its report cards queue here as one batch. Released cards reach parents the same day."
+        />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          {/* Class folders */}
+          <div className="flex flex-col gap-2.5">
+            {batches.map((b) => {
+              const on = b.key === activeKey;
+              return (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => setActiveKey(b.key)}
+                  aria-current={on ? 'true' : undefined}
+                  className={`text-left rounded-tile p-4 flex items-center gap-3.5 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    on
+                      ? 'bg-surface-light dark:bg-surface-dark border-2 border-primary shadow-card'
+                      : 'bg-surface-light dark:bg-surface-dark border border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <span className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${on ? 'bg-primary text-white' : 'bg-tint-peach text-ink-peach'}`}>
+                    <Icon name="folder_open" className="text-[20px]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{b.classId}</p>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {b.term} · {b.reports.length} report{b.reports.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  {b.belowPass > 0 && <Badge tone="blush">{b.belowPass}</Badge>}
+                </button>
+              );
+            })}
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Approval Queue</h1>
-          <p className="text-xs text-slate-500 mt-1">Review and approve report cards submitted for the current term.</p>
-        </div>
-      </div>
 
-      <div className="flex gap-6 flex-1 min-h-0">
-          {/* List - Left Side */}
-          <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
-              <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-[10px] font-bold uppercase text-slate-500">
-                  <div className="col-span-4">Student ID</div>
-                  <div className="col-span-3">Term</div>
-                  <div className="col-span-2">Grade</div>
-                  <div className="col-span-1">Status</div>
-                  <div className="col-span-2 text-right">Actions</div>
+          {/* Batch detail */}
+          {active && (
+            <Card pad={false} className="flex flex-col overflow-hidden">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+                <p className="text-[17px] font-bold tracking-[-0.025em] text-slate-900 dark:text-white">
+                  {active.classId} — {active.term}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Finalised by the class teacher and waiting for release. Open a student to see every subject before you
+                  approve.
+                </p>
               </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                  {submissions.length > 0 ? submissions.map((row, i) => (
-                      <div 
-                        key={row.id || i} 
-                        onClick={() => setActiveReport(row)}
-                        className={`grid grid-cols-12 gap-4 p-4 items-center cursor-pointer transition-colors ${activeReport?.id === row.id ? 'bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-l-primary' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30 border-l-4 border-l-transparent'}`}
-                      >
-                          <div className="col-span-4 text-sm font-bold text-slate-900 dark:text-white truncate">
-                              {row.studentId}
-                          </div>
-                          <div className="col-span-3 text-sm text-slate-600 dark:text-slate-300">{row.term}</div>
-                          <div className="col-span-2 text-xs font-black text-primary bg-primary/10 px-2 py-1 rounded w-fit">{row.grade}</div>
-                          <div className="col-span-1">
-                              <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{row.status}</span>
-                          </div>
-                          <div className="col-span-2 text-right">
-                              <button className="text-xs font-bold text-primary hover:underline">Review Card</button>
-                          </div>
-                      </div>
-                  )) : (
-                    <div className="p-12 text-center text-slate-400">
-                       <Icon name="check_circle" className="text-4xl mb-2 mx-auto" />
-                       <p className="text-sm italic">Queue clear. No pending reports.</p>
-                    </div>
-                  )}
+
+              <div className="p-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <StatTile tint="blue" icon="groups" label="Report cards" value={active.reports.length} />
+                <StatTile tint="mint" icon="analytics" label="Class average" value={active.average || '—'} />
+                <StatTile tint={active.belowPass ? 'blush' : 'plain'} icon="priority_high" label={`Below ${PASS_MARK}`} value={active.belowPass} />
               </div>
-          </div>
 
-          {/* Review Panel - Right Side */}
-          {activeReport ? (
-            <div className="w-[480px] bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl flex flex-col shrink-0">
-                <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/20">
-                    <div className="flex items-center gap-4">
-                        <div className="size-12 rounded-lg bg-primary/10 flex items-center justify-center shadow-sm">
-                           <Icon name="person" className="text-primary" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Reviewing: {activeReport.studentId}</h3>
-                            <p className="text-xs text-slate-500">{activeReport.term} Progress Report</p>
-                        </div>
-                    </div>
+              {active.belowPass > 0 && (
+                <div className="px-6 pb-4">
+                  <InlineNote tone="blush" icon="warning">
+                    {active.belowPass} student{active.belowPass === 1 ? '' : 's'} finished below the pass mark. Worth a look
+                    before these reach parents.
+                  </InlineNote>
                 </div>
+              )}
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-center border border-slate-100 dark:border-slate-700">
-                            <p className="text-[10px] font-bold uppercase text-slate-400">Final Grade</p>
-                            <p className="text-2xl font-black text-slate-900 dark:text-white">{activeReport.grade}</p>
-                        </div>
-                        <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-center border border-slate-100 dark:border-slate-700">
-                            <p className="text-[10px] font-bold uppercase text-slate-400">Total Score</p>
-                            <p className="text-2xl font-black text-slate-900 dark:text-white">{activeReport.totalScore ? `${activeReport.totalScore} / 100` : '--'}</p>
-                        </div>
-                    </div>
+              <div className="px-6 pb-2 overflow-x-auto">
+                <table className="w-full border-collapse min-w-[560px]">
+                  <thead>
+                    <tr>
+                      <Th className="px-0">Student</Th>
+                      <Th className="text-right">Total</Th>
+                      <Th className="text-center">Grade</Th>
+                      <Th>Class teacher&rsquo;s remark</Th>
+                      <Th className="text-right px-0">Action</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {active.reports.map((r) => {
+                      const band = r.totalScore != null ? gradeFor(Number(r.totalScore)) : null;
+                      const low = r.totalScore != null && Number(r.totalScore) < PASS_MARK;
+                      return (
+                        <tr key={r.id} className={low ? 'bg-tint-blush' : undefined}>
+                          <Td className="px-0">
+                            <button
+                              type="button"
+                              onClick={() => setDetail(r)}
+                              className="flex items-center gap-2.5 min-w-0 text-left rounded group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <Avatar name={r.studentName || r.studentId} size={30} />
+                              <span className="text-[12.5px] font-medium text-slate-900 dark:text-white truncate group-hover:text-primary">
+                                {r.studentName || r.studentId}
+                              </span>
+                              <Icon name="chevron_right" className="text-[15px] text-slate-300 shrink-0" />
+                            </button>
+                          </Td>
+                          <Td className="text-right font-semibold text-slate-900 dark:text-white">
+                            {r.totalScore != null ? `${r.totalScore} / ${SUBJECT_MAX}` : '—'}
+                          </Td>
+                          <Td className="text-center">
+                            {band ? <Badge tone={band.tone}>{band.label}</Badge> : <span className="text-slate-300">—</span>}
+                          </Td>
+                          <Td className="text-slate-500 max-w-[260px] truncate">{r.comments || '—'}</Td>
+                          <Td className="text-right px-0">
+                            <button
+                              type="button"
+                              disabled={acting}
+                              onClick={() => act([r], 'rejected', `${r.studentName || 'this report'}`)}
+                              className="text-[11.5px] font-semibold text-ink-blush hover:underline rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50"
+                            >
+                              Return
+                            </button>
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                    <div>
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Teacher's Comments</h4>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 text-sm italic text-slate-600 dark:text-slate-300 leading-relaxed">
-                            {activeReport.comments || 'No comments provided.'}
-                        </div>
-                    </div>
+              <div className="mt-auto px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 flex flex-wrap items-center justify-between gap-4">
+                <p className="text-[11.5px] text-slate-500 max-w-[380px] leading-relaxed">
+                  Approving releases all {active.reports.length} card{active.reports.length === 1 ? '' : 's'} in{' '}
+                  {active.classId} to parents immediately.
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <Button
+                    variant="secondary"
+                    icon="undo"
+                    disabled={acting}
+                    onClick={() => act(active.reports, 'rejected', `all ${active.reports.length} reports in ${active.classId}`)}
+                    className="text-ink-blush border-[#f7ccd6]"
+                  >
+                    Return whole class
+                  </Button>
+                  <Button
+                    variant="success"
+                    icon="check"
+                    loading={acting}
+                    onClick={() => act(active.reports, 'published', `all ${active.reports.length} reports in ${active.classId}`)}
+                  >
+                    Approve &amp; release {active.reports.length}
+                  </Button>
                 </div>
-
-                <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-                    <div className="flex gap-3">
-                        <button 
-                          disabled={actionLoading}
-                          onClick={() => handleAction(activeReport.id, 'rejected')}
-                          className="flex-1 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-red-500 font-bold rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            <Icon name="undo" className="text-sm" /> Reject
-                        </button>
-                        <button 
-                          disabled={actionLoading}
-                          onClick={() => handleAction(activeReport.id, 'published')}
-                          className="flex-1 py-3 bg-primary text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                        >
-                            <Icon name={actionLoading ? 'sync' : 'check_circle'} className={`text-sm ${actionLoading ? 'animate-spin' : ''}`} /> 
-                            {actionLoading ? 'Publishing...' : 'Approve & Release'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-          ) : (
-             <div className="w-[480px] flex items-center justify-center bg-slate-50 dark:bg-slate-900/30 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-                <div className="text-center p-8">
-                   <Icon name="fact_check" className="text-6xl text-slate-200 dark:text-slate-700 mb-4 mx-auto" />
-                   <p className="text-slate-400 font-medium italic">Select a report from the queue to start reviewing.</p>
-                </div>
-             </div>
+              </div>
+            </Card>
           )}
-      </div>
-    </div>
+        </div>
+      )}
+      <Drawer
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail?.studentName || detail?.studentId || ''}
+        subtitle={detail ? `${detail.classId || ''} · ${detail.term || ''}` : undefined}
+        width={520}
+        footer={
+          detail && (
+            <>
+              <Button variant="secondary" icon="file_download" block loading={downloading} onClick={() => downloadPreview(detail.id)}>
+                Download PDF
+              </Button>
+              <Button
+                variant="success"
+                icon="check"
+                block
+                disabled={acting}
+                onClick={() => {
+                  const r = detail;
+                  setDetail(null);
+                  act([r], 'published', r.studentName || 'this report');
+                }}
+              >
+                Approve this one
+              </Button>
+            </>
+          )
+        }
+      >
+        {detail && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="bg-tint-blue rounded-[14px] px-3.5 py-3">
+                <p className="text-[10.5px] text-slate-600 dark:text-slate-400">Average</p>
+                <p className="mt-1 text-lg font-bold text-ink-blue">
+                  {detail.totalScore != null ? `${detail.totalScore}` : '—'}
+                </p>
+              </div>
+              <div className="bg-tint-mint rounded-[14px] px-3.5 py-3">
+                <p className="text-[10.5px] text-slate-600 dark:text-slate-400">Grade</p>
+                <p className="mt-1 text-lg font-bold text-ink-mint">
+                  {detail.totalScore != null ? (gradeFor(Number(detail.totalScore))?.label ?? detail.grade ?? '—') : '—'}
+                </p>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-900/40 rounded-[14px] px-3.5 py-3">
+                <p className="text-[10.5px] text-slate-600 dark:text-slate-400">Subjects</p>
+                <p className="mt-1 text-lg font-bold text-slate-700 dark:text-slate-300">{subjectRows(detail).length}</p>
+              </div>
+            </div>
+
+            {subjectRows(detail).length === 0 ? (
+              <InlineNote tone="butter" icon="warning">
+                This report has no subject scores recorded. Worth returning it rather than releasing an empty card.
+              </InlineNote>
+            ) : (
+              <div>
+                <p className="text-xs font-semibold text-slate-900 dark:text-white mb-2">Subject by subject</p>
+                <div className="rounded-[14px] overflow-hidden border border-slate-100 dark:border-slate-800">
+                  <div className="grid grid-cols-[minmax(0,1fr)_46px_46px_50px_54px] gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/40 text-[9.5px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+                    <span>Subject</span>
+                    <span className="text-right">CA</span>
+                    <span className="text-right">Exam</span>
+                    <span className="text-right">Total</span>
+                    <span className="text-center">Grade</span>
+                  </div>
+                  {subjectRows(detail).map((row) => {
+                    const band = row.total != null ? gradeFor(row.total) : null;
+                    return (
+                      <div
+                        key={row.subject}
+                        className="grid grid-cols-[minmax(0,1fr)_46px_46px_50px_54px] gap-2 px-3 py-2.5 items-center border-t border-slate-100 dark:border-slate-800"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-medium text-slate-900 dark:text-white truncate">{row.subject}</p>
+                          {row.remarks && <p className="text-[10.5px] text-slate-400 truncate">{row.remarks}</p>}
+                        </div>
+                        <span className="text-[11.5px] text-slate-600 dark:text-slate-400 text-right">{row.ca ?? '—'}</span>
+                        <span className="text-[11.5px] text-slate-600 dark:text-slate-400 text-right">{row.exam ?? '—'}</span>
+                        <span className="text-[12px] font-semibold text-slate-900 dark:text-white text-right">{row.total ?? '—'}</span>
+                        <span className="text-center">
+                          {band ? <Badge tone={band.tone}>{band.label}</Badge> : <span className="text-slate-300 text-[11px]">—</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-slate-900 dark:text-white mb-1.5">Class teacher&rsquo;s remark</p>
+              <p className="text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-400">
+                {detail.comments || 'No remark was recorded.'}
+              </p>
+            </div>
+          </div>
+        )}
+      </Drawer>
+    </WorkSurface>
   );
 };

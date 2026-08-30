@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .th { font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase; }
+    .av { width: 34px; height: 34px; border-radius: 999px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .btn-p { height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); }
+    .btn-s { height: 38px; padding: 0 16px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .chip { font-size: 12px; font-weight: 500; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 15px; border-radius: 10px; }
+    .chip.on { background: #195de6; border-color: #195de6; color: #ffffff; font-weight: 600; }
+    .badge { font-size: 10.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px; }
+    .inp { height: 40px; border-radius: 12px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #0f172a; }
+    .lab { font-size: 11.5px; font-weight: 500; color: #334155; }
+    .card { background: #ffffff; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); }
+    .tab { font-size: 12.5px; font-weight: 500; color: #64748b; padding: 9px 16px; border-radius: 11px; }
+    .tab.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 940px; display: flex; background: #f8fafc; overflow: hidden;">
+  <aside style="width: 256px; flex-shrink: 0; background: #195de6; display: flex; flex-direction: column; padding: 24px 14px 20px; gap: 22px;">
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+        <span style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.62); letter-spacing: 0.09em; text-transform: uppercase;">Parent Portal</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Dashboard</div>
+      <div class="navi on"><svg viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>School Fees</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 13.5h6M9 17h4"/></svg>Assignments</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 12h6M9 15.5h6M9 19h3"/></svg>Reports</div>
+    </nav>
+    <div style="height: 1px; background: rgba(255,255,255,0.18); margin: 0 10px;"></div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>Notifications<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">4</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>Settings</div>
+    </nav>
+    <div style="margin-top: auto;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M9.5 20.5H6.4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.1"/><path d="M16 16.5l4.5-4.5L16 7.5"/><path d="M20.5 12H9.5"/></svg>Sign out</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 26px 30px; gap: 16px; overflow: hidden;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em;">School Fees</h1>
+        <p style="margin: 0; font-size: 12.5px; color: #64748b;">Riverside Academy &bull; Term 1, 2023&ndash;24</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div class="inp" style="width: 148px; height: 38px; justify-content: space-between; font-size: 12px; font-weight: 500;">Term 1<svg class="ico" style="width: 14px; height: 14px; color: #94a3b8;" viewBox="0 0 24 24"><path d="M6.5 9.5L12 15l5.5-5.5"/></svg></div>
+        <div class="btn-p"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>Pay GHS 480</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 11px; background: #195de6; border-radius: 15px; padding: 9px 15px 9px 10px; box-shadow: 0 10px 24px -14px rgba(25,93,230,0.9);">
+        <span class="av" style="width: 32px; height: 32px; background: rgba(255,255,255,0.22); color: #ffffff; font-size: 11.5px;">AM</span>
+        <div><p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #ffffff;">Adjoa Mensah</p><p style="margin: 1px 0 0; font-size: 10px; color: rgba(255,255,255,0.72);">Grade 9 &bull; Sec D</p></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 11px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 15px; padding: 9px 15px 9px 10px;">
+        <span class="av" style="width: 32px; height: 32px; background: #f1edfd; color: #7c3aed; font-size: 11.5px;">KM</span>
+        <div><p style="margin: 0; font-size: 12.5px; font-weight: 600;">Kofi Mensah</p><p style="margin: 1px 0 0; font-size: 10px; color: #64748b;">Grade 5 &bull; Sec B</p></div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 15px 18px;"><p style="margin: 0; font-size: 11.5px; color: #64748b;">Term fee</p><p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em;">GHS 1,540</p></div>
+      <div style="background: #e8f6ee; border-radius: 18px; padding: 15px 18px;"><p style="margin: 0; font-size: 11.5px; color: #475569;">Paid to date</p><p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #0b7f57;">GHS 1,060</p></div>
+      <div style="background: #fdecef; border-radius: 18px; padding: 15px 18px;"><p style="margin: 0; font-size: 11.5px; color: #475569;">Balance &bull; due 15 Sep</p><p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #be1e51;">GHS 480</p></div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 396px; gap: 16px;">
+
+      <div class="card" style="overflow: hidden; display: flex; flex-direction: column;">
+        <div style="padding: 18px 22px 14px;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600;">What the fee covers</p>
+          <div style="height: 9px; border-radius: 999px; background: #f1f5f9; margin-top: 12px; overflow: hidden;"><div style="width: 69%; height: 100%; background: #10b981; border-radius: 999px;"></div></div>
+          <p style="margin: 8px 0 0; font-size: 11.5px; color: #64748b;">69% settled &bull; GHS 480 outstanding</p>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 11px 22px; background: #f8fafc;">
+          <span class="th">Item</span><span class="th" style="text-align: right;">Amount</span><span class="th" style="text-align: right;">Paid</span><span class="th" style="text-align: right;">Status</span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 12px 22px; border-top: 1px solid #f1f5f9; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 500;">Tuition</span><span style="font-size: 12.5px; color: #475569; text-align: right;">1,100.00</span><span style="font-size: 12.5px; font-weight: 600; text-align: right;">1,100.00</span><span style="text-align: right;"><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Paid</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 12px 22px; border-top: 1px solid #f1f5f9; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 500;">Books and stationery</span><span style="font-size: 12.5px; color: #475569; text-align: right;">180.00</span><span style="font-size: 12.5px; font-weight: 600; text-align: right;">180.00</span><span style="text-align: right;"><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Paid</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 12px 22px; border-top: 1px solid #f1f5f9; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 500;">Examination fee</span><span style="font-size: 12.5px; color: #475569; text-align: right;">120.00</span><span style="font-size: 12.5px; color: #cbd5e1; text-align: right;">&mdash;</span><span style="text-align: right;"><span class="badge" style="color: #be1e51; background: #fdecef;">Outstanding</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 12px 22px; border-top: 1px solid #f1f5f9; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 500;">Science laboratory</span><span style="font-size: 12.5px; color: #475569; text-align: right;">140.00</span><span style="font-size: 12.5px; color: #cbd5e1; text-align: right;">&mdash;</span><span style="text-align: right;"><span class="badge" style="color: #be1e51; background: #fdecef;">Outstanding</span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 130px 130px 110px; gap: 14px; padding: 12px 22px; border-top: 1px solid #f1f5f9; align-items: center;">
+          <span style="font-size: 12.5px; font-weight: 500;">Sports and clubs</span><span style="font-size: 12.5px; color: #475569; text-align: right;">100.00</span><span style="font-size: 12.5px; color: #cbd5e1; text-align: right;">&mdash;</span><span style="text-align: right;"><span class="badge" style="color: #be1e51; background: #fdecef;">Outstanding</span></span>
+        </div>
+        <div style="margin-top: auto; padding: 14px 22px; border-top: 1px solid #f1f5f9; background: #f8fafc; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 12px; color: #64748b;">Total</span>
+          <div style="display: flex; gap: 40px;"><span style="font-size: 13px; font-weight: 700;">1,540.00</span><span style="font-size: 13px; font-weight: 700; color: #0b7f57;">1,060.00</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+        <div style="background: #fdecef; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 11px;">
+          <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #be1e51;">Payment closes in 14 days</p>
+          <p style="margin: 0; font-size: 11.5px; color: #7d1c3c; line-height: 1.6;">Pay by mobile money, bank transfer or at the school office. Mobile money is credited the same day; bank transfers take up to two working days.</p>
+          <div style="display: flex; gap: 8px;">
+            <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; color: #ffffff; background: #ef4444; padding: 9px 0; border-radius: 11px;">Pay now</span>
+            <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; color: #be1e51; background: #ffffff; padding: 9px 0; border-radius: 11px;">Request plan</span>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 11px;">
+          <p style="margin: 0; font-size: 13.5px; font-weight: 600;">Receipts</p>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <div style="display: flex; align-items: center; gap: 11px; background: #f8fafc; border-radius: 13px; padding: 11px 13px;">
+              <span style="width: 30px; height: 30px; border-radius: 10px; background: #e8f6ee; color: #0b8f61; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>
+              <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 12px; font-weight: 600;">GHS 560.00</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">Mobile money &bull; 12 Aug</p></div>
+              <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0;" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M4.5 20h15"/></svg>
+            </div>
+            <div style="display: flex; align-items: center; gap: 11px; background: #f8fafc; border-radius: 13px; padding: 11px 13px;">
+              <span style="width: 30px; height: 30px; border-radius: 10px; background: #e8f6ee; color: #0b8f61; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>
+              <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 12px; font-weight: 600;">GHS 500.00</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">Bank transfer &bull; 28 Jul</p></div>
+              <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0;" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M4.5 20h15"/></svg>
+            </div>
+          </div>
+          <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #f1f5f9;">
+            <p style="margin: 0; font-size: 11px; color: #94a3b8; line-height: 1.55;">Receipts are issued by the school office. If a payment is missing here, contact them with your transaction reference.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

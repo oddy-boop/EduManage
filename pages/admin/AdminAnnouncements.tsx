@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
 import { useAuth } from '../../lib/AuthContext';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Badge, Button, Card, Chip, EmptyState, Field, InlineNote, Input, NoResults, PageHeader, SkeletonTable, Textarea,
+  type Tint,
+} from '../../components/ui';
 
 interface Announcement {
   id: string;
@@ -11,6 +16,22 @@ interface Announcement {
   createdAt?: string;
 }
 
+const AUDIENCES = [
+  { value: 'all', label: 'Everyone' },
+  { value: 'teachers', label: 'Teachers' },
+  { value: 'parents', label: 'Parents' },
+  { value: 'students', label: 'Students' },
+];
+
+const AUDIENCE_TONE: Record<string, Tint> = {
+  all: 'blue',
+  teachers: 'lilac',
+  parents: 'peach',
+  students: 'mint',
+};
+
+const audienceLabel = (v: string) => AUDIENCES.find((a) => a.value === v)?.label ?? v;
+
 export const AdminAnnouncements: React.FC = () => {
   const { user } = useAuth();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -18,9 +39,10 @@ export const AdminAnnouncements: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', content: '', audience: 'all' });
   const [filterAudience, setFilterAudience] = useState<string>('all-filter');
+  const [touched, setTouched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Subscribing to all announcements
     const unsub = firestoreService.getAnnouncements(null, (data) => {
       setAnnouncements(data as Announcement[]);
       setLoading(false);
@@ -28,16 +50,18 @@ export const AdminAnnouncements: React.FC = () => {
     return () => unsub();
   }, []);
 
+  const titleMissing = touched && !newAnnouncement.title.trim();
+  const bodyMissing = touched && !newAnnouncement.content.trim();
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) {
-      alert("Please fill in both the title and content.");
-      return;
-    }
+    setTouched(true);
+    setError(null);
+    if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) return;
+
     setSubmitting(true);
     try {
       await firestoreService.createAnnouncement(newAnnouncement);
-      
       if (user) {
         await firestoreService.logActivity({
           userId: user.uid,
@@ -45,201 +69,186 @@ export const AdminAnnouncements: React.FC = () => {
           userName: user.name || '',
           action: 'Post Announcement',
           details: `Published school-wide notice: "${newAnnouncement.title}" to target audience: ${newAnnouncement.audience}`,
-          type: 'config_change'
+          type: 'config_change',
         });
       }
-
       setNewAnnouncement({ title: '', content: '', audience: 'all' });
+      setTouched(false);
     } catch (err) {
-      console.error("Failed to post announcement:", err);
-      alert("Failed to publish notice. Please try again.");
+      console.error('Failed to post announcement:', err);
+      setError('Could not publish the notice. Your text is still here — try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string, title: string) => {
-    if (window.confirm(`Are you sure you want to delete the notice "${title}"?`)) {
-      try {
-        await firestoreService.deleteAnnouncement(id);
-        
-        if (user) {
-          await firestoreService.logActivity({
-            userId: user.uid,
-            userEmail: user.email || '',
-            userName: user.name || '',
-            action: 'Delete Announcement',
-            details: `Removed notice: "${title}" from the registry`,
-            type: 'config_change'
-          });
-        }
-      } catch (err) {
-        console.error("Failed to delete announcement:", err);
-        alert("Failed to delete notice. Please try again.");
+    if (!window.confirm(`Delete the notice "${title}"? It disappears from every dashboard immediately.`)) return;
+    setError(null);
+    try {
+      await firestoreService.deleteAnnouncement(id);
+      if (user) {
+        await firestoreService.logActivity({
+          userId: user.uid,
+          userEmail: user.email || '',
+          userName: user.name || '',
+          action: 'Delete Announcement',
+          details: `Removed notice: "${title}" from the registry`,
+          type: 'config_change',
+        });
       }
+    } catch (err) {
+      console.error('Failed to delete announcement:', err);
+      setError('Could not delete that notice. Try again.');
     }
   };
 
-  const filteredAnnouncements = announcements.filter(ann => {
-    if (filterAudience === 'all-filter') return true;
-    return ann.audience === filterAudience;
-  });
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
-    );
-  }
+  const visible =
+    filterAudience === 'all-filter' ? announcements : announcements.filter((a) => a.audience === filterAudience);
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-             <span className="font-bold text-slate-900 dark:text-white">Admin Portal</span>
-             <span>/</span>
-             <span className="font-medium text-primary">Notice Board</span>
+    <WorkSurface>
+      <PageHeader
+        title="Announcements"
+        subtitle="Notices published to a chosen audience's dashboard"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11.5px] text-slate-500 mr-1">Show</span>
+            <Chip active={filterAudience === 'all-filter'} onClick={() => setFilterAudience('all-filter')}>
+              All
+            </Chip>
+            {AUDIENCES.filter((a) => a.value !== 'all').map((a) => (
+              <Chip key={a.value} active={filterAudience === a.value} onClick={() => setFilterAudience(a.value)}>
+                {a.label}
+              </Chip>
+            ))}
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">School Announcements</h1>
-          <p className="text-xs text-slate-500 mt-1">Publish bulletins and circulars directly to Teacher and Parent portals.</p>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Composition Form Card */}
-        <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-5">
-            <div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-base">Compose Notice</h3>
-              <p className="text-slate-400 text-[10px] uppercase font-bold mt-0.5 tracking-wider">Publish news registry</p>
-            </div>
-            
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Notice Title</label>
-                <input 
-                  type="text" 
-                  value={newAnnouncement.title}
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })}
-                  placeholder="e.g. Mid-Term PTA Assembly"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none" 
-                  required
-                />
+      {error && <InlineNote tone="blush" icon="priority_high">{error}</InlineNote>}
+
+      <div className="grid gap-4 lg:grid-cols-[424px_minmax(0,1fr)]">
+        <Card className="flex flex-col gap-4 h-fit">
+          <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">New announcement</p>
+
+          <form onSubmit={handleCreate} className="flex flex-col gap-4" noValidate>
+            <Field label="Title" error={titleMissing ? 'Give the notice a title.' : undefined}>
+              <Input
+                value={newAnnouncement.title}
+                onChange={(e) => setNewAnnouncement({ ...newAnnouncement, title: e.target.value })}
+                placeholder="e.g. Mid-Term PTA Assembly"
+                invalid={titleMissing}
+              />
+            </Field>
+
+            <Field
+              label="Message"
+              error={bodyMissing ? 'Add the message body.' : undefined}
+              hint="Appears as a card on the dashboard — this does not send an email."
+            >
+              <Textarea
+                rows={5}
+                value={newAnnouncement.content}
+                onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })}
+                placeholder="Keep it short."
+              />
+            </Field>
+
+            <Field label="Audience">
+              <div className="flex flex-wrap gap-2">
+                {AUDIENCES.map((a) => (
+                  <Chip
+                    key={a.value}
+                    active={newAnnouncement.audience === a.value}
+                    onClick={() => setNewAnnouncement({ ...newAnnouncement, audience: a.value })}
+                  >
+                    {a.label}
+                  </Chip>
+                ))}
               </div>
+            </Field>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Target Audience</label>
-                <select
-                  value={newAnnouncement.audience}
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, audience: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                >
-                  <option value="all">All (Teachers & Parents)</option>
-                  <option value="teachers">Teachers Only</option>
-                  <option value="parents">Parents & Students Only</option>
-                </select>
-              </div>
+            <InlineNote tone="butter" icon="warning">
+              Published immediately and cannot be edited afterwards, only deleted. Deleting removes it from every dashboard.
+            </InlineNote>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Content / Message</label>
-                <textarea 
-                  value={newAnnouncement.content}
-                  onChange={(e) => setNewAnnouncement({ ...newAnnouncement, content: e.target.value })}
-                  placeholder="Type details about dates, agendas, or reminders..."
-                  rows={6}
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none" 
-                  required
-                />
-              </div>
-
-              <button 
-                type="submit" 
-                disabled={submitting}
-                className="w-full py-3 bg-gradient-to-r from-primary to-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:from-primary/95 hover:to-indigo-750 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            <div className="flex gap-2.5">
+              <Button
+                type="button"
+                variant="secondary"
+                block
+                onClick={() => {
+                  setNewAnnouncement({ title: '', content: '', audience: 'all' });
+                  setTouched(false);
+                }}
               >
-                <Icon name={submitting ? "sync" : "campaign"} className={submitting ? "animate-spin" : ""} />
-                {submitting ? "Publishing..." : "Publish Notice"}
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* Notices Board View */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Filters Bar */}
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-4">
-            <span className="text-xs font-bold text-slate-450 uppercase tracking-wider">Filter Notices:</span>
-            <div className="flex gap-2">
-              {[
-                { label: 'All Portals', value: 'all-filter' },
-                { label: 'Teachers Only', value: 'teachers' },
-                { label: 'Parents Only', value: 'parents' }
-              ].map(tab => (
-                <button
-                  key={tab.value}
-                  onClick={() => setFilterAudience(tab.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    filterAudience === tab.value 
-                      ? 'bg-primary/10 text-primary' 
-                      : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+                Clear
+              </Button>
+              <Button type="submit" icon="campaign" block loading={submitting}>
+                Publish
+              </Button>
             </div>
-          </div>
+          </form>
+        </Card>
 
-          {/* Notices Grid */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Active Bulletins</h3>
-              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-900 rounded text-[9px] font-black text-slate-500">
-                {filteredAnnouncements.length} notices
-              </span>
-            </div>
-
-            <div className="divide-y divide-slate-100 dark:divide-slate-700">
-              {filteredAnnouncements.map((ann) => (
-                <div key={ann.id} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors flex flex-col gap-3 relative group">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase ${
-                        ann.audience === 'teachers' ? 'bg-indigo-50 text-indigo-650 dark:bg-indigo-900/20' :
-                        ann.audience === 'parents' ? 'bg-blue-50 text-blue-650 dark:bg-blue-900/20' : 'bg-emerald-50 text-emerald-650 dark:bg-emerald-900/20'
-                      }`}>
-                        {ann.audience === 'all' ? 'All Audiences' : `${ann.audience} Portal`}
-                      </span>
-                      <span className="text-[10px] font-mono font-medium text-slate-400">
-                        {ann.createdAt ? new Date(ann.createdAt).toLocaleString() : 'Just now'}
-                      </span>
+        <div className="flex flex-col gap-2.5">
+          {loading ? (
+            <SkeletonTable rows={3} />
+          ) : announcements.length === 0 ? (
+            <EmptyState
+              icon="campaign"
+              title="No announcements yet"
+              body="Notices you publish appear here, and on the dashboard of whichever audience you choose."
+            />
+          ) : visible.length === 0 ? (
+            <NoResults
+              title={`Nothing published to ${audienceLabel(filterAudience)}`}
+              body={`${announcements.length} notices exist for other audiences.`}
+              onClear={() => setFilterAudience('all-filter')}
+              clearLabel="Show all"
+            />
+          ) : (
+            visible.map((a) => (
+              <Card key={a.id} className="flex flex-col gap-2.5">
+                <div className="flex items-start justify-between gap-3.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <p className="text-[14.5px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">{a.title}</p>
+                      <Badge tone={AUDIENCE_TONE[a.audience] ?? 'blue'}>{audienceLabel(a.audience)}</Badge>
                     </div>
-                    <button 
-                      onClick={() => handleDelete(ann.id, ann.title)}
-                      className="opacity-0 group-hover:opacity-100 transition-all text-slate-300 hover:text-red-500 p-1"
-                      title="Delete Notice"
-                    >
-                      <Icon name="delete" className="text-base" />
-                    </button>
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">
+                      {a.content}
+                    </p>
                   </div>
-                  
-                  <h4 className="font-bold text-slate-900 dark:text-white text-base leading-tight">{ann.title}</h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium whitespace-pre-wrap">{ann.content}</p>
+                  {/* Always visible, never hover-only — a hover-only delete is
+                      unreachable by keyboard and on touch. */}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(a.id, a.title)}
+                    aria-label={`Delete announcement "${a.title}"`}
+                    className="size-8 shrink-0 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger hover:bg-tint-blush transition-colors flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    <Icon name="delete" className="text-[16px]" />
+                  </button>
                 </div>
-              ))}
-
-              {filteredAnnouncements.length === 0 && (
-                <div className="p-16 text-center text-slate-400 italic text-sm">
-                  No active notices published under this category.
-                </div>
-              )}
-            </div>
-          </div>
+                {a.createdAt && (
+                  <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-400">
+                      {new Date(a.createdAt).toLocaleString(undefined, {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                )}
+              </Card>
+            ))
+          )}
         </div>
       </div>
-    </div>
+    </WorkSurface>
   );
 };

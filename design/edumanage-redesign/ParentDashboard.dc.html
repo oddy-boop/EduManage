@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .sec { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #0f172a; margin: 0; }
+    .cal { font-size: 11.5px; font-weight: 500; color: #334155; width: 28px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 1000px; display: flex; background: #f8fafc; overflow: hidden;">
+
+  <aside style="width: 256px; flex-shrink: 0; background: #195de6; display: flex; flex-direction: column; padding: 24px 14px 20px; gap: 22px;">
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+        <span style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.62); letter-spacing: 0.09em; text-transform: uppercase;">Parent Portal</span>
+      </div>
+    </div>
+
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Dashboard</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>School Fees<span style="margin-left: auto; background: #ffffff; color: #ef4444; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">Due</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 13.5h6M9 17h4"/></svg>Assignments</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 12h6M9 15.5h6M9 19h3"/></svg>Reports</div>
+    </nav>
+
+    <div style="height: 1px; background: rgba(255,255,255,0.18); margin: 0 10px;"></div>
+
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>Notifications<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">2</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>Settings</div>
+    </nav>
+
+    <div style="margin-top: auto;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M9.5 20.5H6.4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.1"/><path d="M16 16.5l4.5-4.5L16 7.5"/><path d="M20.5 12H9.5"/></svg>Sign out</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex;">
+    <section style="flex: 1; min-width: 0; padding: 26px 26px 26px 30px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em; color: #0f172a;">Hi, <span style="color: #195de6;">Efua</span></h1>
+          <p style="margin: 0; font-size: 12.5px; color: #64748b;">Here is how your children are doing this term</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: 11px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7);">
+          <svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>Pay fees
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 11px; background: #195de6; border-radius: 16px; padding: 10px 16px 10px 11px; box-shadow: 0 10px 24px -14px rgba(25,93,230,0.9);">
+          <span style="width: 34px; height: 34px; border-radius: 999px; background: rgba(255,255,255,0.22); color: #ffffff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">AM</span>
+          <div><p style="margin: 0; font-size: 13px; font-weight: 600; color: #ffffff;">Adjoa Mensah</p><p style="margin: 1px 0 0; font-size: 10.5px; color: rgba(255,255,255,0.72);">Grade 9 &bull; Sec D</p></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 10px 16px 10px 11px;">
+          <span style="width: 34px; height: 34px; border-radius: 999px; background: #f1edfd; color: #7c3aed; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;">KM</span>
+          <div><p style="margin: 0; font-size: 13px; font-weight: 600; color: #0f172a;">Kofi Mensah</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #64748b;">Grade 5 &bull; Sec B</p></div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+        <div style="background: #e8f6ee; border-radius: 18px; padding: 16px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 38px; height: 38px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #0b8f61; flex-shrink: 0;"><svg class="ico" style="width: 19px; height: 19px;" viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3.2 19.6a6.4 6.4 0 0 1 10.6-4.6"/><path d="M15 18.2l2 2 4-4.2"/></svg></div>
+          <div><p style="margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -0.03em;">93.3%</p><p style="margin: 1px 0 0; font-size: 11.5px; color: #475569;">Attendance this term</p></div>
+        </div>
+        <div style="background: #fdecef; border-radius: 18px; padding: 16px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 38px; height: 38px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #be1e51; flex-shrink: 0;"><svg class="ico" style="width: 19px; height: 19px;" viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg></div>
+          <div><p style="margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -0.03em;">GHS 480</p><p style="margin: 1px 0 0; font-size: 11.5px; color: #475569;">Balance due 15 Sep</p></div>
+        </div>
+        <div style="background: #eaf0fe; border-radius: 18px; padding: 16px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 38px; height: 38px; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6; flex-shrink: 0;"><svg class="ico" style="width: 19px; height: 19px;" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 12h6M9 15.5h6"/></svg></div>
+          <div><p style="margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -0.03em;">2</p><p style="margin: 1px 0 0; font-size: 11.5px; color: #475569;">Report cards released</p></div>
+        </div>
+      </div>
+
+      <h2 class="sec">Adjoa&#39;s term at a glance</h2>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px;">
+        <div style="background: #ffffff; border-radius: 20px; padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25);">
+          <div>
+            <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #0f172a;">Average score by subject</p>
+            <p style="margin: 2px 0 0; font-size: 10.5px; color: #94a3b8;">Term 1 &bull; class average shown as a marker</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 9px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 84px; font-size: 11.5px; color: #475569; flex-shrink: 0;">Mathematics</span>
+              <div style="flex: 1; height: 14px; border-radius: 7px; background: #f1f5f9; position: relative;"><div style="width: 88%; height: 100%; border-radius: 7px; background: #195de6;"></div><span style="position: absolute; left: 74%; top: -3px; width: 2px; height: 20px; background: #94a3b8; border-radius: 2px;"></span></div>
+              <span style="width: 30px; font-size: 11.5px; font-weight: 600; color: #0f172a; text-align: right; flex-shrink: 0;">88</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 84px; font-size: 11.5px; color: #475569; flex-shrink: 0;">English</span>
+              <div style="flex: 1; height: 14px; border-radius: 7px; background: #f1f5f9; position: relative;"><div style="width: 79%; height: 100%; border-radius: 7px; background: #195de6;"></div><span style="position: absolute; left: 76%; top: -3px; width: 2px; height: 20px; background: #94a3b8; border-radius: 2px;"></span></div>
+              <span style="width: 30px; font-size: 11.5px; font-weight: 600; color: #0f172a; text-align: right; flex-shrink: 0;">79</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 84px; font-size: 11.5px; color: #475569; flex-shrink: 0;">Science</span>
+              <div style="flex: 1; height: 14px; border-radius: 7px; background: #f1f5f9; position: relative;"><div style="width: 84%; height: 100%; border-radius: 7px; background: #195de6;"></div><span style="position: absolute; left: 71%; top: -3px; width: 2px; height: 20px; background: #94a3b8; border-radius: 2px;"></span></div>
+              <span style="width: 30px; font-size: 11.5px; font-weight: 600; color: #0f172a; text-align: right; flex-shrink: 0;">84</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 84px; font-size: 11.5px; color: #475569; flex-shrink: 0;">Social studies</span>
+              <div style="flex: 1; height: 14px; border-radius: 7px; background: #f1f5f9; position: relative;"><div style="width: 66%; height: 100%; border-radius: 7px; background: #195de6;"></div><span style="position: absolute; left: 73%; top: -3px; width: 2px; height: 20px; background: #94a3b8; border-radius: 2px;"></span></div>
+              <span style="width: 30px; font-size: 11.5px; font-weight: 600; color: #0f172a; text-align: right; flex-shrink: 0;">66</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="width: 84px; font-size: 11.5px; color: #475569; flex-shrink: 0;">ICT</span>
+              <div style="flex: 1; height: 14px; border-radius: 7px; background: #f1f5f9; position: relative;"><div style="width: 91%; height: 100%; border-radius: 7px; background: #195de6;"></div><span style="position: absolute; left: 80%; top: -3px; width: 2px; height: 20px; background: #94a3b8; border-radius: 2px;"></span></div>
+              <span style="width: 30px; font-size: 11.5px; font-weight: 600; color: #0f172a; text-align: right; flex-shrink: 0;">91</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #64748b;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #195de6;"></span>Adjoa</span>
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #64748b;"><span style="width: 2px; height: 11px; background: #94a3b8; border-radius: 2px;"></span>Class average</span>
+          </div>
+        </div>
+
+        <div style="background: #e8f6ee; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 13px;">
+          <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #0b7f57;">Attendance breakdown</p>
+          <div style="display: flex; align-items: baseline; gap: 7px;">
+            <span style="font-size: 30px; font-weight: 700; letter-spacing: -0.04em; color: #0f172a;">168</span>
+            <span style="font-size: 11.5px; color: #475569;">of 180 days present</span>
+          </div>
+          <div style="display: flex; gap: 2px; height: 15px;">
+            <div style="width: 93.3%; background: #10b981; border-radius: 7px 0 0 7px;"></div>
+            <div style="width: 3.9%; background: #f59e0b;"></div>
+            <div style="width: 2.8%; background: #ef4444; border-radius: 0 7px 7px 0;"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #10b981;"></span><span style="font-size: 11.5px; color: #475569; flex: 1;">Present</span><span style="font-size: 11.5px; font-weight: 600;">168</span></div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #f59e0b;"></span><span style="font-size: 11.5px; color: #475569; flex: 1;">Late</span><span style="font-size: 11.5px; font-weight: 600;">7</span></div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #ef4444;"></span><span style="font-size: 11.5px; color: #475569; flex: 1;">Absent</span><span style="font-size: 11.5px; font-weight: 600;">5</span></div>
+          </div>
+          <div style="background: #ffffff; border-radius: 14px; padding: 11px 12px; margin-top: auto;">
+            <p style="margin: 0; font-size: 11px; color: #475569; line-height: 1.5;">Two absences in the last fortnight were unexcused. <span style="color: #0b8f61; font-weight: 600;">Submit a note</span></p>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="sec">Needs your attention</h2>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+        <div style="background: #fdecef; border-radius: 20px; padding: 15px 17px; display: flex; flex-direction: column; gap: 9px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 22px; height: 22px; border-radius: 7px; background: #ef4444; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg class="ico" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M12 8v5"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor" stroke="none"/><path d="M12 3.5l9 15.5H3z"/></svg></span>
+            <p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #be1e51;">Fee balance overdue soon</p>
+          </div>
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.55;">GHS 480 of the Term 1 fee remains. Payment closes 15 September.</p>
+          <span style="align-self: flex-start; font-size: 11px; font-weight: 600; color: #ffffff; background: #ef4444; padding: 6px 14px; border-radius: 10px;">Pay now</span>
+        </div>
+        <div style="background: #fdf6e3; border-radius: 20px; padding: 15px 17px; display: flex; flex-direction: column; gap: 9px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 22px; height: 22px; border-radius: 7px; background: #d9a441; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg class="ico" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/></svg></span>
+            <p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #a16207;">Assignment due tomorrow</p>
+          </div>
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.55;">Algebra worksheet 4 &bull; Grade 9 Sec D. Not yet submitted.</p>
+          <span style="align-self: flex-start; font-size: 11px; font-weight: 600; color: #a16207; background: #ffffff; padding: 6px 14px; border-radius: 10px;">View assignment</span>
+        </div>
+        <div style="background: #eaf0fe; border-radius: 20px; padding: 15px 17px; display: flex; flex-direction: column; gap: 9px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 22px; height: 22px; border-radius: 7px; background: #195de6; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg class="ico" style="width: 13px; height: 13px;" viewBox="0 0 24 24"><path d="M4 10v4a1 1 0 0 0 1 1h2.2l7 4V5L7.2 9H5a1 1 0 0 0-1 1z"/></svg></span>
+            <p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #195de6;">Parent&ndash;teacher evening</p>
+          </div>
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.55;">Thursday 18 September, 16:00. Book a 10-minute slot with Ms Mensah.</p>
+          <span style="align-self: flex-start; font-size: 11px; font-weight: 600; color: #ffffff; background: #195de6; padding: 6px 14px; border-radius: 10px;">Book a slot</span>
+        </div>
+      </div>
+
+    </section>
+
+    <aside style="width: 312px; flex-shrink: 0; background: #ffffff; border-left: 1px solid #eef2f7; padding: 26px 22px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <div style="position: relative;">
+          <div style="width: 74px; height: 74px; border-radius: 999px; background: #eaf0fe; display: flex; align-items: center; justify-content: center; font-size: 25px; font-weight: 700; color: #195de6; letter-spacing: -0.02em;">AM</div>
+          <span style="position: absolute; right: 3px; bottom: 3px; width: 15px; height: 15px; border-radius: 999px; background: #10b981; border: 2.5px solid #ffffff;"></span>
+        </div>
+        <div style="text-align: center;">
+          <p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em;">Adjoa Mensah</p>
+          <p style="margin: 2px 0 0; font-size: 11.5px; color: #64748b;">Grade 9 &bull; Sec D &bull; Ms Mensah</p>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 2px;">
+          <span style="font-size: 10.5px; font-weight: 600; color: #0b7f57; background: #e8f6ee; padding: 3px 11px; border-radius: 999px;">In school today</span>
+        </div>
+      </div>
+
+      <div style="background: #f8fafc; border-radius: 20px; padding: 14px 14px 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px 10px;">
+          <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8;" viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>
+          <span style="font-size: 12.5px; font-weight: 600; color: #0f172a;">September 2026</span>
+          <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8;" viewBox="0 0 24 24"><path d="M9.5 5.5L16 12l-6.5 6.5"/></svg>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; justify-items: center;">
+          <span style="font-size: 10px; font-weight: 600; color: #94a3b8; padding-bottom: 4px;">Mo</span>
+          <span style="font-size: 10px; font-weight: 600; color: #94a3b8; padding-bottom: 4px;">Tu</span>
+          <span style="font-size: 10px; font-weight: 600; color: #94a3b8; padding-bottom: 4px;">We</span>
+          <span style="font-size: 10px; font-weight: 600; color: #94a3b8; padding-bottom: 4px;">Th</span>
+          <span style="font-size: 10px; font-weight: 600; color: #94a3b8; padding-bottom: 4px;">Fr</span>
+          <span style="font-size: 10px; font-weight: 600; color: #f97316; padding-bottom: 4px;">Sa</span>
+          <span style="font-size: 10px; font-weight: 600; color: #ef4444; padding-bottom: 4px;">Su</span>
+          <span class="cal" style="color: #cbd5e1;">31</span>
+          <span class="cal" style="background: #195de6; color: #ffffff; font-weight: 600;">1</span>
+          <span class="cal">2</span><span class="cal">3</span><span class="cal">4</span>
+          <span class="cal" style="color: #f97316;">5</span><span class="cal" style="color: #ef4444;">6</span>
+          <span class="cal">7</span><span class="cal">8</span><span class="cal">9</span>
+          <span class="cal" style="background: #fdf6e3; color: #a16207; font-weight: 600;">10</span>
+          <span class="cal">11</span><span class="cal" style="color: #f97316;">12</span><span class="cal" style="color: #ef4444;">13</span>
+          <span class="cal">14</span>
+          <span class="cal" style="background: #fdecef; color: #be1e51; font-weight: 600;">15</span>
+          <span class="cal">16</span><span class="cal">17</span>
+          <span class="cal" style="background: #e8f6ee; color: #0b7f57; font-weight: 600;">18</span>
+          <span class="cal" style="color: #f97316;">19</span><span class="cal" style="color: #ef4444;">20</span>
+          <span class="cal">21</span><span class="cal">22</span><span class="cal">23</span><span class="cal">24</span><span class="cal">25</span>
+          <span class="cal" style="color: #f97316;">26</span><span class="cal" style="color: #ef4444;">27</span>
+          <span class="cal">28</span><span class="cal">29</span><span class="cal">30</span>
+          <span class="cal" style="color: #cbd5e1;">1</span><span class="cal" style="color: #cbd5e1;">2</span>
+          <span class="cal" style="color: #cbd5e1;">3</span><span class="cal" style="color: #cbd5e1;">4</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 4px 0; margin-top: 8px; border-top: 1px solid #e2e8f0;">
+          <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 7px; height: 7px; border-radius: 999px; background: #f59e0b;"></span>Exam</span>
+          <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 7px; height: 7px; border-radius: 999px; background: #10b981;"></span>Event</span>
+          <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 7px; height: 7px; border-radius: 999px; background: #ef4444;"></span>Fees due</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #0f172a;">From the school</p>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="background: #f8fafc; border-radius: 14px; padding: 11px 12px;">
+            <p style="margin: 0; font-size: 11.5px; font-weight: 600; color: #0f172a;">Mid-term break confirmed</p>
+            <p style="margin: 3px 0 0; font-size: 10.5px; color: #64748b; line-height: 1.5;">School closes 23 Oct, reopens 2 Nov.</p>
+          </div>
+          <div style="background: #f8fafc; border-radius: 14px; padding: 11px 12px;">
+            <p style="margin: 0; font-size: 11.5px; font-weight: 600; color: #0f172a;">New bus route for Adenta</p>
+            <p style="margin: 3px 0 0; font-size: 10.5px; color: #64748b; line-height: 1.5;">Register interest before 12 Sep.</p>
+          </div>
+          <div style="background: #f8fafc; border-radius: 14px; padding: 11px 12px;">
+            <p style="margin: 0; font-size: 11.5px; font-weight: 600; color: #0f172a;">Term 1 report cards</p>
+            <p style="margin: 3px 0 0; font-size: 10.5px; color: #64748b; line-height: 1.5;">Released once approved by the head.</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

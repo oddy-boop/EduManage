@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .th { font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase; }
+    .av { width: 34px; height: 34px; border-radius: 999px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .btn-p { height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); }
+    .btn-s { height: 38px; padding: 0 16px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .chip { font-size: 12px; font-weight: 500; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 15px; border-radius: 10px; }
+    .chip.on { background: #195de6; border-color: #195de6; color: #ffffff; font-weight: 600; }
+    .badge { font-size: 10.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px; }
+    .inp { height: 40px; border-radius: 12px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #0f172a; }
+    .lab { font-size: 11.5px; font-weight: 500; color: #334155; }
+    .card { background: #ffffff; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); }
+    .tab { font-size: 12.5px; font-weight: 500; color: #64748b; padding: 9px 16px; border-radius: 11px; }
+    .tab.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 940px; display: flex; background: #f8fafc; overflow: hidden;">
+  <aside style="width: 256px; flex-shrink: 0; background: #195de6; display: flex; flex-direction: column; padding: 24px 14px 20px; gap: 22px;">
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+        <span style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.62); letter-spacing: 0.09em; text-transform: uppercase;">Parent Portal</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Dashboard</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>School Fees</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 13.5h6M9 17h4"/></svg>Assignments</div>
+      <div class="navi on"><svg viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 12h6M9 15.5h6M9 19h3"/></svg>Reports</div>
+    </nav>
+    <div style="height: 1px; background: rgba(255,255,255,0.18); margin: 0 10px;"></div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>Notifications<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">4</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>Settings</div>
+    </nav>
+    <div style="margin-top: auto;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M9.5 20.5H6.4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.1"/><path d="M16 16.5l4.5-4.5L16 7.5"/><path d="M20.5 12H9.5"/></svg>Sign out</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 26px 30px; gap: 16px; overflow: hidden;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em;">Reports</h1>
+        <p style="margin: 0; font-size: 12.5px; color: #64748b;">Report cards appear here once the head teacher has approved them</p>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 11px; background: #195de6; border-radius: 15px; padding: 9px 15px 9px 10px; box-shadow: 0 10px 24px -14px rgba(25,93,230,0.9);">
+        <span class="av" style="width: 32px; height: 32px; background: rgba(255,255,255,0.22); color: #ffffff; font-size: 11.5px;">AM</span>
+        <div><p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #ffffff;">Adjoa Mensah</p><p style="margin: 1px 0 0; font-size: 10px; color: rgba(255,255,255,0.72);">Grade 9 &bull; Sec D</p></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 11px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 15px; padding: 9px 15px 9px 10px;">
+        <span class="av" style="width: 32px; height: 32px; background: #f1edfd; color: #7c3aed; font-size: 11.5px;">KM</span>
+        <div><p style="margin: 0; font-size: 12.5px; font-weight: 600;">Kofi Mensah</p><p style="margin: 1px 0 0; font-size: 10px; color: #64748b;">Grade 5 &bull; Sec B</p></div>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px;">
+
+      <div style="display: flex; flex-direction: column; gap: 11px; min-height: 0;">
+
+        <div class="card" style="padding: 20px 22px; display: flex; align-items: center; gap: 18px; outline: 1.5px solid #195de6; outline-offset: -1.5px;">
+          <div style="width: 54px; height: 66px; border-radius: 9px; background: #eaf0fe; border: 1px solid #c7d7fb; display: flex; flex-direction: column; padding: 7px 6px; gap: 3px; flex-shrink: 0;">
+            <span style="height: 4px; border-radius: 2px; background: #195de6; width: 70%;"></span>
+            <span style="height: 3px; border-radius: 2px; background: #c7d7fb;"></span><span style="height: 3px; border-radius: 2px; background: #c7d7fb;"></span><span style="height: 3px; border-radius: 2px; background: #c7d7fb; width: 80%;"></span>
+            <span style="height: 3px; border-radius: 2px; background: #c7d7fb;"></span><span style="height: 3px; border-radius: 2px; background: #c7d7fb; width: 60%;"></span>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 9px;"><p style="margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.02em;">Term 1 &bull; 2023&ndash;24</p><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Released</span></div>
+            <p style="margin: 5px 0 0; font-size: 12px; color: #64748b;">Grade 9 &bull; Sec D &bull; approved 30 Aug by the head teacher</p>
+            <div style="display: flex; gap: 18px; margin-top: 10px;">
+              <span style="font-size: 11.5px; color: #64748b;">Average <span style="font-weight: 700; color: #0f172a;">83.7%</span></span>
+              <span style="font-size: 11.5px; color: #64748b;">Position <span style="font-weight: 700; color: #0f172a;">3rd of 32</span></span>
+              <span style="font-size: 11.5px; color: #64748b;">Attendance <span style="font-weight: 700; color: #0f172a;">93.3%</span></span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+            <div class="btn-p" style="justify-content: center;">Open report</div>
+            <div class="btn-s" style="justify-content: center;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M4.5 20h15"/></svg>PDF</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px 22px; display: flex; align-items: center; gap: 18px;">
+          <div style="width: 54px; height: 66px; border-radius: 9px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; flex-direction: column; padding: 7px 6px; gap: 3px; flex-shrink: 0;">
+            <span style="height: 4px; border-radius: 2px; background: #cbd5e1; width: 70%;"></span>
+            <span style="height: 3px; border-radius: 2px; background: #eef2f7;"></span><span style="height: 3px; border-radius: 2px; background: #eef2f7;"></span><span style="height: 3px; border-radius: 2px; background: #eef2f7; width: 80%;"></span>
+            <span style="height: 3px; border-radius: 2px; background: #eef2f7;"></span><span style="height: 3px; border-radius: 2px; background: #eef2f7; width: 60%;"></span>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 9px;"><p style="margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.02em;">Term 3 &bull; 2022&ndash;23</p><span class="badge" style="color: #475569; background: #f1f5f9;">Archived</span></div>
+            <p style="margin: 5px 0 0; font-size: 12px; color: #64748b;">Grade 8 &bull; Sec D &bull; released 12 Jul 2023</p>
+            <div style="display: flex; gap: 18px; margin-top: 10px;">
+              <span style="font-size: 11.5px; color: #64748b;">Average <span style="font-weight: 700; color: #0f172a;">79.4%</span></span>
+              <span style="font-size: 11.5px; color: #64748b;">Position <span style="font-weight: 700; color: #0f172a;">6th of 30</span></span>
+              <span style="font-size: 11.5px; color: #64748b;">Attendance <span style="font-weight: 700; color: #0f172a;">91.1%</span></span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+            <div class="btn-s" style="justify-content: center;">Open report</div>
+            <div class="btn-s" style="justify-content: center;"><svg class="ico" style="width: 15px; height: 15px;" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M4.5 20h15"/></svg>PDF</div>
+          </div>
+        </div>
+
+        <div style="border: 1px dashed #cbd5e1; border-radius: 20px; padding: 22px; display: flex; align-items: center; gap: 16px; background: #ffffff;">
+          <span style="width: 40px; height: 40px; border-radius: 13px; background: #f8fafc; color: #94a3b8; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg class="ico" style="width: 20px; height: 20px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.2v5.1l3.2 1.9"/></svg></span>
+          <div style="flex: 1;">
+            <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #64748b;">Term 2 &bull; 2023&ndash;24</p>
+            <p style="margin: 4px 0 0; font-size: 11.5px; color: #94a3b8; line-height: 1.55;">Not started. Teachers enter marks near the end of term, and cards are released once approved.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+        <div class="card" style="padding: 20px 22px;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600;">Average across terms</p>
+          <p style="margin: 3px 0 0; font-size: 11px; color: #94a3b8;">Adjoa&#39;s overall percentage</p>
+          <svg viewBox="0 0 340 140" style="width: 100%; height: 132px; margin-top: 8px;">
+            <line x1="14" y1="112" x2="326" y2="112" stroke="#e2e8f0" stroke-width="1"/>
+            <line x1="14" y1="68" x2="326" y2="68" stroke="#f1f5f9" stroke-width="1" stroke-dasharray="3 4"/>
+            <line x1="14" y1="24" x2="326" y2="24" stroke="#f1f5f9" stroke-width="1" stroke-dasharray="3 4"/>
+            <path d="M40,74 L140,62 L240,50 L320,34" fill="none" stroke="#195de6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <g fill="#ffffff" stroke="#195de6" stroke-width="2"><circle cx="40" cy="74" r="4"/><circle cx="140" cy="62" r="4"/><circle cx="240" cy="50" r="4"/></g>
+            <circle cx="320" cy="34" r="5" fill="#195de6" stroke="#ffffff" stroke-width="2"/>
+            <g font-family="Lexend, system-ui, sans-serif" font-size="10" font-weight="600" fill="#334155" text-anchor="middle"><text x="40" y="64">72</text><text x="140" y="52">76</text><text x="240" y="40">79</text><text x="320" y="24">84</text></g>
+            <g font-family="Lexend, system-ui, sans-serif" font-size="9.5" fill="#94a3b8" text-anchor="middle"><text x="40" y="130">T1 &rsquo;22</text><text x="140" y="130">T2 &rsquo;22</text><text x="240" y="130">T3 &rsquo;23</text><text x="320" y="130">T1 &rsquo;24</text></g>
+          </svg>
+        </div>
+
+        <div style="background: #eaf0fe; border-radius: 20px; padding: 18px 20px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0; font-size: 13.5px; font-weight: 600; color: #195de6;">How report cards work</p>
+          <div style="display: flex; flex-direction: column; gap: 11px; margin-top: 3px;">
+            <div style="display: flex; gap: 11px;"><span style="width: 22px; height: 22px; border-radius: 999px; background: #ffffff; color: #195de6; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">1</span><p style="margin: 0; font-size: 11.5px; color: #1e3a8a; line-height: 1.55;">Subject teachers enter exam marks and remarks.</p></div>
+            <div style="display: flex; gap: 11px;"><span style="width: 22px; height: 22px; border-radius: 999px; background: #ffffff; color: #195de6; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">2</span><p style="margin: 0; font-size: 11.5px; color: #1e3a8a; line-height: 1.55;">The class teacher reviews the whole class and submits.</p></div>
+            <div style="display: flex; gap: 11px;"><span style="width: 22px; height: 22px; border-radius: 999px; background: #ffffff; color: #195de6; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">3</span><p style="margin: 0; font-size: 11.5px; color: #1e3a8a; line-height: 1.55;">The head teacher approves and releases the batch.</p></div>
+            <div style="display: flex; gap: 11px;"><span style="width: 22px; height: 22px; border-radius: 999px; background: #195de6; color: #ffffff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">4</span><p style="margin: 0; font-size: 11.5px; color: #1e3a8a; line-height: 1.55; font-weight: 500;">You see it here, the same day.</p></div>
+          </div>
+          <p style="margin: auto 0 0; font-size: 11px; color: #3b62b8; line-height: 1.55;">A released card is fixed. If something looks wrong, contact the class teacher rather than waiting for it to change.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

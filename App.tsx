@@ -4,6 +4,7 @@ import { Login } from './pages/Login';
 import { UserRole, View } from './types';
 import { TeacherLayout, AdminLayout, ParentLayout } from './components/Layouts';
 import { useAuth } from './lib/AuthContext';
+import { loadGradingScale } from './lib/grading';
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
 import { TeacherQuizConfig } from './pages/teacher/TeacherQuizConfig';
 import { TeacherQuizShare } from './pages/teacher/TeacherQuizShare';
@@ -35,6 +36,12 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.LOGIN);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [selectedChild, setSelectedChild] = useState<any>(null);
+
+  // Pull the school's configured grading scale once signed in, so entry screens
+  // and report cards show the same letters the server will store.
+  useEffect(() => {
+    if (user) loadGradingScale();
+  }, [user?.uid]);
 
   useEffect(() => {
     if (user) {

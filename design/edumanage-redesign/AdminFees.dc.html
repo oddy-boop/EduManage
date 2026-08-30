@@ -1,0 +1,257 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .th { font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase; }
+    .av { width: 34px; height: 34px; border-radius: 999px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .btn-p { height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); }
+    .btn-s { height: 38px; padding: 0 16px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .chip { font-size: 12px; font-weight: 500; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 15px; border-radius: 10px; }
+    .chip.on { background: #195de6; border-color: #195de6; color: #ffffff; font-weight: 600; }
+    .badge { font-size: 10.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 1000px; display: flex; background: #f8fafc; overflow: hidden; position: relative;">
+  <aside style="width: 256px; flex-shrink: 0; background: #195de6; display: flex; flex-direction: column; padding: 24px 14px 20px; gap: 22px; z-index: 3;">
+    <div style="display: flex; align-items: center; gap: 11px; padding: 0 8px;">
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1px;">
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+        <span style="font-size: 10px; font-weight: 500; color: rgba(255,255,255,0.62); letter-spacing: 0.09em; text-transform: uppercase;">Admin Portal</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Dashboard</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3 19.6a6.5 6.5 0 0 1 13 0"/><path d="M18.5 8.5v5M16 11h5"/></svg>Registration</div>
+      <div class="navi on"><svg viewBox="0 0 24 24"><rect x="2.6" y="5.6" width="18.8" height="12.8" rx="2.6"/><path d="M2.6 10h18.8"/></svg>School Fees</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.4"/><path d="M3.5 10h17"/><path d="M8 3v4M16 3v4"/></svg>Academic Calendar</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2.2"/><path d="M9.5 4V3.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V4"/><path d="M9.2 13.2l2.1 2.1 4-4.4"/></svg>Report Approvals<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">7</span></div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M4 10v4a1 1 0 0 0 1 1h2.2l7 4V5L7.2 9H5a1 1 0 0 0-1 1z"/><path d="M18 9.2a4 4 0 0 1 0 5.6"/></svg>Announcements</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M3.6 12a8.4 8.4 0 1 0 2.6-6"/><path d="M3.2 4.2v5h5"/><path d="M12 7.6V12l3 2"/></svg>Audit Logs</div>
+      <div class="navi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>School Settings</div>
+    </nav>
+    <div style="height: 1px; background: rgba(255,255,255,0.18); margin: 0 10px;"></div>
+    <nav style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>Notifications<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">12</span></div>
+    </nav>
+    <div style="margin-top: auto;">
+      <div class="navi"><svg viewBox="0 0 24 24"><path d="M9.5 20.5H6.4a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2h3.1"/><path d="M16 16.5l4.5-4.5L16 7.5"/><path d="M20.5 12H9.5"/></svg>Sign out</div>
+    </div>
+  </aside>
+
+  <main style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 26px 30px; gap: 18px; overflow: hidden; position: relative;">
+
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.03em;">School Fees</h1>
+        <p style="margin: 0; font-size: 12.5px; color: #64748b;">Term 1 &bull; 2023&ndash;24 &bull; 1,284 students billed</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px;">
+        <div class="btn-s"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5l4.5 4.5 4.5-4.5"/><path d="M4.5 20h15"/></svg>Export ledger</div>
+        <div class="btn-p"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></svg>Record payment</div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 15px 18px;">
+        <p style="margin: 0; font-size: 11.5px; color: #64748b;">Expected this term</p>
+        <p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em;">GHS 1.98M</p>
+      </div>
+      <div style="background: #e8f6ee; border-radius: 18px; padding: 15px 18px;">
+        <p style="margin: 0; font-size: 11.5px; color: #475569;">Collected</p>
+        <p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #0b7f57;">GHS 1.27M</p>
+      </div>
+      <div style="background: #fdecef; border-radius: 18px; padding: 15px 18px;">
+        <p style="margin: 0; font-size: 11.5px; color: #475569;">Outstanding</p>
+        <p style="margin: 5px 0 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #be1e51;">GHS 712k</p>
+      </div>
+      <div style="background: #eaf0fe; border-radius: 18px; padding: 15px 18px;">
+        <p style="margin: 0; font-size: 11.5px; color: #475569;">Collection rate</p>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 5px;">
+          <p style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #195de6;">64%</p>
+          <span style="font-size: 11px; font-weight: 600; color: #0b8f61;">+6 pts</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <span class="chip on">All classes</span>
+        <span class="chip">Grade 7</span>
+        <span class="chip">Grade 8</span>
+        <span class="chip">Grade 9</span>
+        <span style="width: 1px; height: 22px; background: #e2e8f0; margin: 0 5px;"></span>
+        <span class="chip" style="color: #be1e51; border-color: #f7ccd6; background: #fdecef; font-weight: 600;">Outstanding only</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; height: 36px; width: 240px; padding: 0 13px; border-radius: 10px; background: #ffffff; border: 1px solid #e2e8f0;">
+        <svg class="ico" style="width: 15px; height: 15px; color: #94a3b8;" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.6"/><path d="M15.8 15.8l4.4 4.4"/></svg>
+        <span style="font-size: 12px; color: #94a3b8;">Search student or invoice</span>
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 22px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 14px 34px -22px rgba(15,23,42,0.3); overflow: hidden;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: #f8fafc;">
+            <th class="th" style="text-align: left; padding: 14px 20px;">Student</th>
+            <th class="th" style="text-align: left; padding: 14px 12px;">Class</th>
+            <th class="th" style="text-align: right; padding: 14px 12px;">Expected</th>
+            <th class="th" style="text-align: right; padding: 14px 12px;">Paid</th>
+            <th class="th" style="text-align: right; padding: 14px 12px;">Balance</th>
+            <th class="th" style="text-align: left; padding: 14px 20px;">Progress</th>
+            <th class="th" style="text-align: right; padding: 14px 20px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #eaf0fe; color: #195de6;">AM</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Adjoa Mensah</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">INV-24-1041</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">1,060</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; color: #b45309; text-align: right;">480</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #f1f5f9;"><div style="width: 69%; height: 100%; border-radius: 999px; background: #f59e0b;"></div></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #b45309; background: #fdf0e6;">Partial</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #e8f6ee; color: #0b7f57;">BO</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Bright Osei</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">INV-24-1042</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #cbd5e1; text-align: right;">&mdash;</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #f1f5f9;"><div style="width: 100%; height: 100%; border-radius: 999px; background: #10b981;"></div></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Paid</span></td>
+          </tr>
+          <tr style="background: #eaf0fe;">
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #ffffff; color: #be1e51;">DA</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Daniel Amoah</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #195de6; font-weight: 500;">Selected &bull; INV-24-1044</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">0</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 700; color: #be1e51; text-align: right;">1,540</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #ffffff;"></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #be1e51; background: #ffffff;">Outstanding</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #f1edfd; color: #7c3aed;">EK</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Esi Koomson</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">INV-24-1045</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #cbd5e1; text-align: right;">&mdash;</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #f1f5f9;"><div style="width: 100%; height: 100%; border-radius: 999px; background: #10b981;"></div></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Paid</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #fdf0e6; color: #b45309;">FN</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Fiifi Nkrumah</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">INV-24-1046</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">770</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; color: #b45309; text-align: right;">770</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #f1f5f9;"><div style="width: 50%; height: 100%; border-radius: 999px; background: #f59e0b;"></div></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #b45309; background: #fdf0e6;">Partial</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="display: flex; align-items: center; gap: 11px;"><span class="av" style="background: #eaf0fe; color: #195de6;">HB</span><div><p style="margin: 0; font-size: 13px; font-weight: 600;">Hannah Baidoo</p><p style="margin: 1px 0 0; font-size: 10.5px; color: #94a3b8;">INV-24-1048</p></div></div></td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569;">Grade 9 &bull; D</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #475569; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; font-weight: 600; text-align: right;">1,540</td>
+            <td style="padding: 12px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #cbd5e1; text-align: right;">&mdash;</td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9;"><div style="width: 130px; height: 7px; border-radius: 999px; background: #f1f5f9;"><div style="width: 100%; height: 100%; border-radius: 999px; background: #10b981;"></div></div></td>
+            <td style="padding: 12px 20px; border-top: 1px solid #f1f5f9; text-align: right;"><span class="badge" style="color: #0b7f57; background: #e8f6ee;">Paid</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="position: absolute; inset: 0; background: rgba(15,23,42,0.32); z-index: 4;"></div>
+
+    <div style="position: absolute; top: 0; right: 0; bottom: 0; width: 408px; background: #ffffff; z-index: 5; box-shadow: -24px 0 60px -30px rgba(15,23,42,0.55); display: flex; flex-direction: column;">
+      <div style="padding: 24px 26px 18px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+        <div>
+          <p style="margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.025em;">Record payment</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #64748b;">Daniel Amoah &bull; Grade 9 Sec D</p>
+        </div>
+        <span style="width: 30px; height: 30px; border-radius: 9px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; color: #64748b;"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></span>
+      </div>
+
+      <div style="padding: 20px 26px; display: flex; flex-direction: column; gap: 17px; flex: 1;">
+        <div style="background: #fdecef; border-radius: 14px; padding: 13px 15px; display: flex; align-items: center; justify-content: space-between;">
+          <div><p style="margin: 0; font-size: 11px; color: #64748b;">Outstanding balance</p><p style="margin: 3px 0 0; font-size: 20px; font-weight: 700; color: #be1e51; letter-spacing: -0.03em;">GHS 1,540.00</p></div>
+          <span class="badge" style="color: #be1e51; background: #ffffff;">Term 1</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <span style="font-size: 12px; font-weight: 500; color: #334155;">Amount received</span>
+          <div style="height: 44px; border-radius: 13px; border: 1px solid #195de6; box-shadow: 0 0 0 3px rgba(25,93,230,0.12); background: #ffffff; display: flex; align-items: center; padding: 0 15px; gap: 9px;">
+            <span style="font-size: 12.5px; color: #94a3b8;">GHS</span>
+            <span style="font-size: 15px; font-weight: 600; color: #0f172a;">800.00</span>
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 2px;">
+            <span style="font-size: 10.5px; font-weight: 600; color: #195de6; background: #eaf0fe; padding: 4px 11px; border-radius: 8px;">Half</span>
+            <span style="font-size: 10.5px; font-weight: 600; color: #195de6; background: #eaf0fe; padding: 4px 11px; border-radius: 8px;">Full balance</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <span style="font-size: 12px; font-weight: 500; color: #334155;">Method</span>
+          <div style="display: flex; gap: 4px; background: #f8fafc; padding: 3px; border-radius: 12px;">
+            <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 9px 0; border-radius: 9px; color: #94a3b8;">Cash</span>
+            <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 9px 0; border-radius: 9px; background: #195de6; color: #ffffff;">Mobile money</span>
+            <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 9px 0; border-radius: 9px; color: #94a3b8;">Bank</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 12px;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 12px; font-weight: 500; color: #334155;">Date received</span>
+            <div style="height: 44px; border-radius: 13px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 15px; gap: 9px; font-size: 12.5px; color: #0f172a;">
+              <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8;" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.4"/><path d="M3.5 10h17"/><path d="M8 3v4M16 3v4"/></svg>1 Sep 2026
+            </div>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 7px;">
+            <span style="font-size: 12px; font-weight: 500; color: #334155;">Reference</span>
+            <div style="height: 44px; border-radius: 13px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 15px; font-size: 12.5px; color: #94a3b8;">MoMo txn ID</div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <span style="font-size: 12px; font-weight: 500; color: #334155;">Note <span style="color: #94a3b8; font-weight: 400;">(optional)</span></span>
+          <div style="height: 66px; border-radius: 13px; border: 1px solid #e2e8f0; background: #ffffff; padding: 12px 15px; font-size: 12.5px; color: #94a3b8;">Visible to the parent on their receipt</div>
+        </div>
+
+        <div style="display: flex; align-items: flex-start; gap: 9px; background: #f8fafc; border-radius: 13px; padding: 12px 14px;">
+          <svg class="ico" style="width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0; margin-top: 1px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11.4v5"/><circle cx="12" cy="8.2" r="0.9" fill="currentColor" stroke="none"/></svg>
+          <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.55;">Recording a payment writes an audit log entry and emails the parent a receipt. It cannot be edited afterwards, only reversed.</p>
+        </div>
+      </div>
+
+      <div style="padding: 18px 26px; border-top: 1px solid #f1f5f9; display: flex; gap: 10px;">
+        <div class="btn-s" style="flex: 1; justify-content: center;">Cancel</div>
+        <div class="btn-p" style="flex: 1.4; justify-content: center;">Record GHS 800.00</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

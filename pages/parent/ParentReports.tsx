@@ -1,137 +1,182 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
-import { View } from '../../types';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
-import { exportToCSV } from '../../lib/exportUtils';
+import { View } from '../../types';
+import { WorkSurface } from '../../components/Layouts';
+import { Badge, Button, Card, ChildSwitcher, EmptyState, InlineNote, PageHeader, SkeletonTable } from '../../components/ui';
 
 interface ParentReportsProps {
   onNavigate: (view: View, report?: any, child?: any) => void;
 }
 
+const STEPS = [
+  'Subject teachers enter exam marks and remarks.',
+  'The class teacher reviews the whole class and submits.',
+  'The head teacher approves and releases the batch.',
+  'You see it here, the same day.',
+];
+
 export const ParentReports: React.FC<ParentReportsProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const [children, setChildren] = useState<any[]>([]);
-  const [activeChild, setActiveChild] = useState<any>(null);
+  const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const download = async (reportId: string) => {
+    setError(null);
+    setDownloading(reportId);
+    try {
+      await firestoreService.downloadReportPdf(reportId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not download that report.');
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   useEffect(() => {
     if (!user?.uid) return;
     const unsub = firestoreService.getStudentsForParent(user.uid, (data) => {
       setChildren(data);
-      if (data.length > 0 && !activeChild) {
-        setActiveChild(data[0]);
-      }
+      setActiveChildId((prev) => prev ?? data[0]?.id ?? null);
       setLoading(false);
     });
     return () => unsub();
-  }, [user, activeChild]);
+  }, [user?.uid]);
+
+  const activeChild = children.find((c) => c.id === activeChildId) ?? null;
 
   useEffect(() => {
     if (!activeChild?.id || !user?.uid) return;
     const unsub = firestoreService.getStudentReports(activeChild.id, user.uid, setReports);
     return () => unsub();
-  }, [activeChild, user]);
+  }, [activeChild?.id, user?.uid]);
+
+  const released = reports.filter((r) => r.status === 'published');
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-48 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={3} />
+      </WorkSurface>
+    );
+  }
+
+  if (children.length === 0) {
+    return (
+      <WorkSurface>
+        <PageHeader title="Reports" />
+        <EmptyState icon="family_restroom" title="No children linked to your account" body="Contact the school office if one is missing." />
+      </WorkSurface>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <span>Parent Portal</span>
-            <Icon name="chevron_right" className="text-xs" />
-            <span>Academic Management</span>
-          </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Reports History</h1>
-          <p className="text-slate-500 text-sm mt-1">{activeChild?.name} • Grade {activeChild?.classId} • Student ID: {activeChild?.id}</p>
-        </div>
+    <WorkSurface>
+      <PageHeader title="Reports" subtitle="Report cards appear here once the head teacher has approved them" />
 
-        {/* Child Selector */}
-        {children.length > 1 && (
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
-             {children.map(child => (
-               <button 
-                 key={child.id}
-                 onClick={() => setActiveChild(child)}
-                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                   activeChild?.id === child.id ? 'bg-white dark:bg-slate-700 shadow-sm text-primary' : 'text-slate-500'
-                 }`}
-               >
-                 {child.name}
-               </button>
-             ))}
-          </div>
-        )}
-      </div>
+      <ChildSwitcher children={children} activeId={activeChildId} onSelect={setActiveChildId} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {reports.length > 0 ? reports.map((report, i) => (
-          <div key={report.id || i} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 relative overflow-hidden group hover:border-primary/50 transition-colors">
-             {i === 0 && (
-                 <span className="absolute top-0 right-0 bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">LATEST</span>
-             )}
-             
-             <div className="flex justify-between items-start mb-4">
-                 <div className="size-12 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-primary flex items-center justify-center">
-                     <Icon name="verified" className={i === 0 ? 'text-2xl' : 'text-xl opacity-50'} />
-                 </div>
-                 <Icon name="check_circle" className="text-green-500 text-sm" />
-             </div>
+      {error && <InlineNote tone="blush" icon="priority_high">{error}</InlineNote>}
 
-             <h3 className="text-xl font-bold text-slate-900 dark:text-white">{report.term}</h3>
-             <p className="text-xs text-slate-500 mb-6">{report.session || 'Academic Year'}</p>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-2.5">
+          {released.length === 0 ? (
+            <EmptyState
+              icon="description"
+              title="No report cards released yet"
+              body={`Once ${activeChild?.name || 'your child'}'s teachers finish entering marks and the head teacher approves them, the card appears here.`}
+            />
+          ) : (
+            released.map((report) => (
+              <Card key={report.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-5">
+                <div className="w-[54px] h-[66px] rounded-[9px] bg-tint-blue border border-[#c7d7fb] dark:border-slate-700 flex flex-col gap-[3px] p-[7px_6px] shrink-0">
+                  <span className="h-1 rounded-sm bg-primary w-[70%]" />
+                  <span className="h-[3px] rounded-sm bg-[#c7d7fb]" />
+                  <span className="h-[3px] rounded-sm bg-[#c7d7fb]" />
+                  <span className="h-[3px] rounded-sm bg-[#c7d7fb] w-[80%]" />
+                  <span className="h-[3px] rounded-sm bg-[#c7d7fb]" />
+                  <span className="h-[3px] rounded-sm bg-[#c7d7fb] w-[60%]" />
+                </div>
 
-             <div className="flex items-end gap-2 mb-6">
-                 <div>
-                     <p className="text-[10px] font-bold uppercase text-slate-400">Status</p>
-                     <span className="inline-block px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold rounded uppercase">{report.status}</span>
-                 </div>
-                 <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-2"></div>
-                  <div>
-                      <p className="text-[10px] font-bold uppercase text-slate-400">Total Score</p>
-                      <p className="text-xl font-black text-slate-900 dark:text-white">{report.totalScore ? `${report.totalScore} / 100` : 'N/A'}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+                      {report.term}
+                      {report.session ? ` · ${report.session}` : ''}
+                    </p>
+                    <Badge tone="mint">Released</Badge>
                   </div>
-             </div>
+                  <div className="flex flex-wrap gap-4 mt-2.5">
+                    {report.totalScore != null && (
+                      <span className="text-[11.5px] text-slate-500">
+                        Average <span className="font-bold text-slate-900 dark:text-white">{Math.round(report.totalScore)}%</span>
+                      </span>
+                    )}
+                    <span className="text-[11.5px] text-slate-500">
+                      Class <span className="font-bold text-slate-900 dark:text-white">{activeChild?.classId || '—'}</span>
+                    </span>
+                  </div>
+                </div>
 
-             <div className="flex gap-3">
-                 <button 
-                    onClick={() => onNavigate(View.PARENT_REPORT_DETAIL, report, activeChild)}
-                    className="flex-1 bg-primary text-white py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
-                 >
-                     <Icon name="visibility" className="text-lg" /> Details
-                 </button>
-                 <button
-                    onClick={() => exportToCSV([report], `${activeChild?.name || 'student'}_${report.term}_report.csv`)}
-                    className="aspect-square bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                 >
-                     <Icon name="download" />
-                 </button>
-             </div>
-          </div>
-        )) : (
-          <div className="col-span-full py-20 text-center">
-            <Icon name="history" className="text-6xl text-slate-200 dark:text-slate-700 mb-4 mx-auto" />
-            <p className="text-slate-500 font-medium italic">No report history found for this student.</p>
-          </div>
-        )}
-      </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="secondary"
+                    icon="file_download"
+                    loading={downloading === report.id}
+                    onClick={() => download(report.id)}
+                  >
+                    PDF
+                  </Button>
+                  <Button onClick={() => onNavigate(View.PARENT_REPORT_DETAIL, report, activeChild)}>Open report</Button>
+                </div>
+              </Card>
+            ))
+          )}
 
-      <div className="flex items-start gap-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30">
-        <Icon name="info" className="text-primary mt-0.5" />
-        <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white">Historical Data Notice</h4>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">These reports are official school records. If you notice any discrepancies in the archived data, please contact the Registrar's Office.</p>
+          {reports.length > released.length && (
+            <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-panel p-5 flex items-center gap-4">
+              <span className="size-10 rounded-[13px] bg-slate-50 dark:bg-slate-900/40 text-slate-400 flex items-center justify-center shrink-0">
+                <Icon name="schedule" className="text-[20px]" />
+              </span>
+              <div>
+                <p className="text-[13.5px] font-semibold text-slate-500">
+                  {reports.length - released.length} report{reports.length - released.length === 1 ? '' : 's'} not yet released
+                </p>
+                <p className="mt-1 text-[11.5px] text-slate-400 leading-relaxed">
+                  Marks are in, but the head teacher has not approved the batch. Nothing for you to do.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-tint-blue rounded-panel p-5 flex flex-col gap-3 h-fit">
+          <p className="text-[13.5px] font-semibold text-ink-blue">How report cards work</p>
+          <div className="flex flex-col gap-3 mt-1">
+            {STEPS.map((s, i) => (
+              <div key={i} className="flex gap-2.5">
+                <span
+                  className={`size-[22px] rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${
+                    i === STEPS.length - 1 ? 'bg-primary text-white' : 'bg-white dark:bg-slate-900/50 text-ink-blue'
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <p className="text-[11.5px] leading-relaxed text-ink-blue">{s}</p>
+              </div>
+            ))}
+          </div>
+          <InlineNote tone="blue" icon="info">
+            A released card is fixed. If something looks wrong, contact the class teacher rather than waiting for it to change.
+          </InlineNote>
         </div>
       </div>
-    </div>
+    </WorkSurface>
   );
 };

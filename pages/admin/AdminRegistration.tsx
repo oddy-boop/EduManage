@@ -2,10 +2,48 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
 import { useAuth } from '../../lib/AuthContext';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Avatar, Badge, Button, Card, Chip, Drawer, EmptyState, feeBilled, feePaid, Field, ghs, InlineNote, Input, NoResults,
+  PageHeader, SectionHeading, Select, SkeletonTable, Tabs, Td, Th, type Tint,
+} from '../../components/ui';
+
+type Tab = 'student' | 'teacher' | 'parent' | 'roster';
+
+const TYPE_TINT: Record<string, Tint> = { Student: 'blue', Teacher: 'lilac', Parent: 'peach' };
+
+/** One-time credentials must be readable and copyable — never trapped in an alert(). */
+const CredentialRow: React.FC<{ label: string; value: string }> = ({ label, value }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">{label}</p>
+        <p className="mt-1 text-base font-bold tracking-[-0.01em] text-slate-900 dark:text-white break-all">{value}</p>
+      </div>
+      <button
+        type="button"
+        aria-label={`Copy ${label}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch {
+            setCopied(false);
+          }
+        }}
+        className="size-9 shrink-0 rounded-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 hover:text-primary flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        <Icon name={copied ? 'check' : 'copy'} className="text-[16px]" />
+      </button>
+    </div>
+  );
+};
 
 export const AdminRegistration: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'parent' | 'roster'>('student');
+  const [activeTab, setActiveTab] = useState<Tab>('student');
   const [generatedId, setGeneratedId] = useState<string | null>(null);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,1027 +55,832 @@ export const AdminRegistration: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
   const [rosterSearch, setRosterSearch] = useState('');
   const [parentSearch, setParentSearch] = useState('');
-  const [memberExtraInfo, setMemberExtraInfo] = useState<{
-    attendance?: any;
-    fees?: any[];
-    reports?: any[];
-  }>({});
+  const [error, setError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null);
+  const [memberExtraInfo, setMemberExtraInfo] = useState<{ attendance?: any; fees?: any[]; reports?: any[] }>({});
 
   const [availableGrades, setAvailableGrades] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
 
-  // Student Form State
-  const [studentForm, setStudentForm] = useState({
-    name: '',
-    age: '',
-    parentName: '',
-    parentContact: '',
-    classId: '',
-    parentId: ''
-  });
-
-  // Teacher Form State
+  const [studentForm, setStudentForm] = useState({ name: '', age: '', parentName: '', parentContact: '', classId: '', parentId: '' });
   const [teacherForm, setTeacherForm] = useState({
     name: '',
     email: '',
     qualification: '',
     subjects: ['Mathematics'],
     assignedClasses: [] as string[],
-    assignedCourses: [] as string[]
+    assignedCourses: [] as string[],
   });
-
-  // Parent Form State
-  const [parentForm, setParentForm] = useState({
-    name: '',
-    email: '',
-    contact: ''
-  });
+  const [parentForm, setParentForm] = useState({ name: '', email: '', contact: '' });
+  // (class, course) pairs — replaces the old two flat lists, which multiplied out
+  // into "teaches every one of their subjects in every one of their classes".
+  const [teacherAssignments, setTeacherAssignments] = useState<{ classId: string; courseCode: string }[]>([]);
 
   useEffect(() => {
-    // Helper to extract a sortable time value
     const getTime = (m: any) => {
-        if (m.createdAt) {
-          const parsed = new Date(m.createdAt).getTime();
-          if (!Number.isNaN(parsed)) return parsed;
-        }
-        return Date.now(); // Fallback for optimistic updates without a timestamp yet
+      if (m.createdAt) {
+        const parsed = new Date(m.createdAt).getTime();
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+      return Date.now();
     };
 
     const unsubStudents = firestoreService.getStudents((data) => {
-        setAllStudents(data);
-        setRecentMembers(prev => {
-            const rest = prev.filter(m => m.type !== 'Student');
-            const newStudents = data.map(s => ({ ...s, type: 'Student' }));
-            return [...rest, ...newStudents].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
-        });
+      setAllStudents(data);
+      setRecentMembers((prev) => {
+        const rest = prev.filter((m) => m.type !== 'Student');
+        return [...rest, ...data.map((s) => ({ ...s, type: 'Student' }))].sort((a, b) => getTime(b) - getTime(a)).slice(0, 10);
+      });
     });
-
     const unsubTeachers = firestoreService.getTeachers((data) => {
-        setRecentMembers(prev => {
-            const rest = prev.filter(m => m.type !== 'Teacher');
-            const newTeachers = data.map(t => ({ ...t, id: t.uid, type: 'Teacher' }));
-            return [...rest, ...newTeachers].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
-        });
+      setRecentMembers((prev) => {
+        const rest = prev.filter((m) => m.type !== 'Teacher');
+        return [...rest, ...data.map((t) => ({ ...t, id: t.uid, type: 'Teacher' }))]
+          .sort((a, b) => getTime(b) - getTime(a))
+          .slice(0, 10);
+      });
     });
-
-    const unsubGrades = firestoreService.getGrades((data) => setAvailableGrades(data));
-    const unsubCourses = firestoreService.getCourses((data) => setAvailableCourses(data));
+    const unsubGrades = firestoreService.getGrades(setAvailableGrades);
+    const unsubCourses = firestoreService.getCourses(setAvailableCourses);
     const unsubParents = firestoreService.getParents((data) => {
-        setAllParents(data);
-        setRecentMembers(prev => {
-            const rest = prev.filter(m => m.type !== 'Parent');
-            const newParents = data.map(p => ({ ...p, id: p.uid, type: 'Parent' }));
-            return [...rest, ...newParents].sort((a,b) => getTime(b) - getTime(a)).slice(0, 10);
-        });
+      setAllParents(data);
+      setRecentMembers((prev) => {
+        const rest = prev.filter((m) => m.type !== 'Parent');
+        return [...rest, ...data.map((p) => ({ ...p, id: p.uid, type: 'Parent' }))]
+          .sort((a, b) => getTime(b) - getTime(a))
+          .slice(0, 10);
+      });
     });
 
     setLoadingMembers(false);
     return () => {
-        unsubStudents();
-        unsubTeachers();
-        unsubGrades();
-        unsubCourses();
-        unsubParents();
-    }
+      unsubStudents();
+      unsubTeachers();
+      unsubGrades();
+      unsubCourses();
+      unsubParents();
+    };
   }, []);
 
+  // Keep the open detail panel in step when a loginId lands a moment later.
   useEffect(() => {
-    if (selectedMember) {
-      // Find the latest data for this member in our existing recentMembers list
-      // This ensures that if loginId was added a split second later, we see it
-      const matchingMember = recentMembers.find(m => m.id === selectedMember.id);
-      if (matchingMember && matchingMember.loginId !== selectedMember.loginId) {
-        setSelectedMember(matchingMember);
-      }
-    }
+    if (!selectedMember) return;
+    const match = recentMembers.find((m) => m.id === selectedMember.id);
+    if (match && match.loginId !== selectedMember.loginId) setSelectedMember(match);
   }, [recentMembers, selectedMember]);
 
   useEffect(() => {
-    if (selectedMember && selectedMember.type === 'Student') {
-      const unsubAttendance = firestoreService.getStudentAttendanceSummary(
-        selectedMember.id, 
-        selectedMember.parentId, 
-        (data) => setMemberExtraInfo(prev => ({ ...prev, attendance: data }))
-      );
-      const unsubFees = firestoreService.getFeesForStudent(
-        selectedMember.id, 
-        (data) => setMemberExtraInfo(prev => ({ ...prev, fees: data }))
-      );
-      const unsubReports = firestoreService.pocketGetStudentReports(
-        selectedMember.id,
-        (data) => setMemberExtraInfo(prev => ({ ...prev, reports: data }))
-      );
-
-      return () => {
-        unsubAttendance();
-        unsubFees();
-        unsubReports();
-      };
-    } else {
+    if (selectedMember?.type !== 'Student') {
       setMemberExtraInfo({});
+      return;
     }
+    const unsubAttendance = firestoreService.getStudentAttendanceSummary(selectedMember.id, selectedMember.parentId, (data) =>
+      setMemberExtraInfo((prev) => ({ ...prev, attendance: data })),
+    );
+    const unsubFees = firestoreService.getFeesForStudent(selectedMember.id, (data) =>
+      setMemberExtraInfo((prev) => ({ ...prev, fees: data })),
+    );
+    const unsubReports = firestoreService.pocketGetStudentReports(selectedMember.id, (data) =>
+      setMemberExtraInfo((prev) => ({ ...prev, reports: data })),
+    );
+    return () => {
+      unsubAttendance();
+      unsubFees();
+      unsubReports();
+    };
   }, [selectedMember]);
 
+  const log = (action: string, details: string) =>
+    user
+      ? firestoreService.logActivity({
+          userId: user.uid,
+          userEmail: user.email || '',
+          userName: user.name || '',
+          action,
+          details,
+          type: 'registration',
+        })
+      : Promise.resolve();
+
+  const resetForm = () => {
+    setStudentForm({ name: '', age: '', parentName: '', parentContact: '', classId: '', parentId: '' });
+    setTeacherForm({ name: '', email: '', qualification: '', subjects: ['Mathematics'], assignedClasses: [], assignedCourses: [] });
+    setParentForm({ name: '', email: '', contact: '' });
+    setTeacherAssignments([]);
+    setParentSearch('');
+  };
+
   const handleRegister = async () => {
-      if (activeTab === 'student' && !studentForm.parentId) {
-        alert("Please select a Parent/Guardian for this student. If they aren't registered yet, use the Parent Registration tab first.");
+    setError(null);
+    const validAssignments = teacherAssignments.filter((a) => a.classId && a.courseCode);
+    if (activeTab === 'student' && !studentForm.parentId) {
+      setError('Select a parent or guardian for this student. If they are not registered yet, use the Parent tab first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (editingId) {
+        if (activeTab === 'student') {
+          await firestoreService.updateStudent(editingId, { ...studentForm, grade: studentForm.classId });
+          await log('Student Profile Update', `Updated student profile for ${studentForm.name} (ID/Class: ${studentForm.classId})`);
+        } else if (activeTab === 'teacher') {
+          await firestoreService.updateUser(editingId, { ...teacherForm });
+          await firestoreService.setTeacherAssignments(editingId, validAssignments);
+          await log(
+            'Teacher Profile Update',
+            `Updated teacher profile for ${teacherForm.name} (Email: ${teacherForm.email}); ${validAssignments.length} class/subject assignment(s)`,
+          );
+        } else {
+          await firestoreService.updateUser(editingId, { name: parentForm.name, email: parentForm.email });
+          await log('Parent Profile Update', `Updated parent profile for ${parentForm.name}`);
+        }
+        setEditingId(null);
+        resetForm();
         return;
       }
 
-      setIsSubmitting(true);
-      try {
-        if (editingId) {
-            if (activeTab === 'student') {
-                await firestoreService.updateStudent(editingId, {
-                    ...studentForm,
-                    grade: studentForm.classId
-                });
-                if (user) {
-                  await firestoreService.logActivity({
-                    userId: user.uid,
-                    userEmail: user.email || '',
-                    userName: user.name || '',
-                    action: 'Student Profile Update',
-                    details: `Updated student profile for ${studentForm.name} (ID/Class: ${studentForm.classId})`,
-                    type: 'registration'
-                  });
-                }
-            } else if (activeTab === 'teacher') {
-                await firestoreService.updateUser(editingId, {
-                    ...teacherForm
-                });
-                if (user) {
-                  await firestoreService.logActivity({
-                    userId: user.uid,
-                    userEmail: user.email || '',
-                    userName: user.name || '',
-                    action: 'Teacher Profile Update',
-                    details: `Updated teacher profile for ${teacherForm.name} (Email: ${teacherForm.email})`,
-                    type: 'registration'
-                  });
-                }
-            } else {
-                await firestoreService.updateUser(editingId, {
-                    name: parentForm.name,
-                    email: parentForm.email
-                });
-                if (user) {
-                  await firestoreService.logActivity({
-                    userId: user.uid,
-                    userEmail: user.email || '',
-                    userName: user.name || '',
-                    action: 'Parent Profile Update',
-                    details: `Updated parent profile for ${parentForm.name}`,
-                    type: 'registration'
-                  });
-                }
-            }
-            setEditingId(null);
-            resetForm();
-            return;
-        }
-
-        let newMemberId = '';
-        if (activeTab === 'student') {
-            // Pre-calculate the Login ID using a fresh document ID to make it ATOMIC
-            const studentId = firestoreService.generateId('students');
-            newMemberId = `STU${new Date().getFullYear()}${studentId.slice(0, 4).toUpperCase()}`;
-
-            await firestoreService.registerStudentWithId(studentId, {
-              ...studentForm,
-              grade: studentForm.classId,
-              loginId: newMemberId
-            });
-
-            if (user) {
-              await firestoreService.logActivity({
-                userId: user.uid,
-                userEmail: user.email || '',
-                userName: user.name || '',
-                action: 'Student Registration',
-                details: `Registered new student ${studentForm.name} with Login ID ${newMemberId}`,
-                type: 'registration'
-              });
-            }
-            setGeneratedPassword(null);
-        } else if (activeTab === 'teacher') {
-            const teacherId = firestoreService.generateId('users');
-            newMemberId = `T${Math.floor(100 + Math.random() * 900)}`;
-
-            const created = await firestoreService.registerTeacherWithId(teacherId, {
-              ...teacherForm,
-              role: 'Teacher',
-              loginId: newMemberId,
-              avatar: `https://picsum.photos/seed/${teacherId}/100`
-            });
-
-            if (user) {
-              await firestoreService.logActivity({
-                userId: user.uid,
-                userEmail: user.email || '',
-                userName: user.name || '',
-                action: 'Teacher Registration',
-                details: `Registered new teacher ${teacherForm.name} (Login ID: ${newMemberId})`,
-                type: 'registration'
-              });
-            }
-            setGeneratedPassword(created?.temporaryPassword || null);
-        } else {
-            const parentId = firestoreService.generateId('users');
-            newMemberId = `P${Math.floor(100 + Math.random() * 900)}`;
-
-            const created = await firestoreService.registerParentWithId(parentId, {
-              name: parentForm.name,
-              email: parentForm.email,
-              loginId: newMemberId
-            });
-
-            if (user) {
-              await firestoreService.logActivity({
-                userId: user.uid,
-                userEmail: user.email || '',
-                userName: user.name || '',
-                action: 'Parent Registration',
-                details: `Registered new parent ${parentForm.name} (Login ID: ${newMemberId})`,
-                type: 'registration'
-              });
-            }
-            setGeneratedPassword(created?.temporaryPassword || null);
-        }
-
-        setGeneratedId(newMemberId);
-        resetForm();
-      } catch (err) {
-        console.error("Registration failed:", err);
-        alert(err instanceof Error ? err.message : "Registration failed. Please try again.");
-      } finally {
-        setIsSubmitting(false);
+      let newMemberId = '';
+      if (activeTab === 'student') {
+        // Pre-calculate the login ID from a fresh document id so it is atomic.
+        const studentId = firestoreService.generateId('students');
+        newMemberId = `STU${new Date().getFullYear()}${studentId.slice(0, 4).toUpperCase()}`;
+        await firestoreService.registerStudentWithId(studentId, { ...studentForm, grade: studentForm.classId, loginId: newMemberId });
+        await log('Student Registration', `Registered new student ${studentForm.name} with Login ID ${newMemberId}`);
+        setGeneratedPassword(null);
+      } else if (activeTab === 'teacher') {
+        const teacherId = firestoreService.generateId('users');
+        newMemberId = `T${Math.floor(100 + Math.random() * 900)}`;
+        const created = await firestoreService.registerTeacherWithId(teacherId, {
+          ...teacherForm,
+          role: 'Teacher',
+          loginId: newMemberId,
+          avatar: `https://picsum.photos/seed/${teacherId}/100`,
+        });
+        if (validAssignments.length) await firestoreService.setTeacherAssignments(teacherId, validAssignments);
+        await log(
+          'Teacher Registration',
+          `Registered new teacher ${teacherForm.name} (Login ID: ${newMemberId}) with ${validAssignments.length} class/subject assignment(s)`,
+        );
+        setGeneratedPassword(created?.temporaryPassword || null);
+      } else {
+        const parentId = firestoreService.generateId('users');
+        newMemberId = `P${Math.floor(100 + Math.random() * 900)}`;
+        const created = await firestoreService.registerParentWithId(parentId, {
+          name: parentForm.name,
+          email: parentForm.email,
+          loginId: newMemberId,
+        });
+        await log('Parent Registration', `Registered new parent ${parentForm.name} (Login ID: ${newMemberId})`);
+        setGeneratedPassword(created?.temporaryPassword || null);
       }
-  };
 
-  const resetForm = () => {
-    setStudentForm({
-      name: '',
-      age: '',
-      parentName: '',
-      parentContact: '',
-      classId: '',
-      parentId: ''
-    });
-    setTeacherForm({
-      name: '',
-      email: '',
-      qualification: '',
-      subjects: ['Mathematics'],
-      assignedClasses: [],
-      assignedCourses: []
-    });
-    setParentForm({
-      name: '',
-      email: '',
-      contact: ''
-    });
+      setGeneratedId(newMemberId);
+      resetForm();
+    } catch (err) {
+      console.error('Registration failed:', err);
+      setError(err instanceof Error ? err.message : 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const startEdit = (member: any) => {
-      setEditingId(member.id || member.uid);
-      if (member.type === 'Student') {
-          setActiveTab('student');
-          setStudentForm({
-              name: member.name,
-              age: member.age ? String(member.age) : '',
-              parentName: member.parentName || '',
-              parentContact: member.parentContact || '',
-              classId: member.classId || '',
-              parentId: member.parentId || ''
-          });
-      } else if (member.type === 'Parent') {
-          setActiveTab('parent');
-          setParentForm({
-              name: member.name,
-              email: member.email || '',
-              contact: ''
-          });
-      } else {
-          setActiveTab('teacher');
-          setTeacherForm({
-              name: member.name,
-              email: member.email || '',
-              qualification: member.qualification || '',
-              subjects: member.subjects || ['Mathematics'],
-              assignedClasses: member.assignedClasses || [],
-              assignedCourses: member.assignedCourses || []
-          });
-      }
+    setError(null);
+    setEditingId(member.id || member.uid);
+    if (member.type === 'Student') {
+      setActiveTab('student');
+      setStudentForm({
+        name: member.name,
+        age: member.age ? String(member.age) : '',
+        parentName: member.parentName || '',
+        parentContact: member.parentContact || '',
+        classId: member.classId || '',
+        parentId: member.parentId || '',
+      });
+    } else if (member.type === 'Parent') {
+      setActiveTab('parent');
+      setParentForm({ name: member.name, email: member.email || '', contact: '' });
+    } else {
+      setActiveTab('teacher');
+      firestoreService
+        .getTeacherAssignments({ teacherId: member.uid || member.id })
+        .then((rows) => setTeacherAssignments(rows.map((r) => ({ classId: r.classId, courseCode: r.courseCode }))))
+        .catch(() => setTeacherAssignments([]));
+      setTeacherForm({
+        name: member.name,
+        email: member.email || '',
+        qualification: member.qualification || '',
+        subjects: member.subjects || ['Mathematics'],
+        assignedClasses: member.assignedClasses || [],
+        assignedCourses: member.assignedCourses || [],
+      });
+    }
+    setSelectedMember(null);
   };
 
   const handleResetPassword = async (member: any) => {
-      const uid = member.id || member.uid;
-      if (!uid) return;
-      if (!window.confirm(`Generate a new temporary password for ${member.name}? Their current password will stop working immediately.`)) return;
-      try {
-        const result = await firestoreService.resetUserPassword(uid);
-        if (user) {
-          await firestoreService.logActivity({
-            userId: user.uid,
-            userEmail: user.email || '',
-            userName: user.name || '',
-            action: 'Password Reset',
-            details: `Reset password for ${member.name} (${member.type})`,
-            type: 'registration'
-          });
-        }
-        alert(`New temporary password for ${member.name}: ${result.temporaryPassword}\n\nShare this with them securely — it will not be shown again.`);
-      } catch (err) {
-        console.error("Failed to reset password:", err);
-        alert("Failed to reset password. Please try again.");
-      }
+    const uid = member.id || member.uid;
+    if (!uid) return;
+    if (!window.confirm(`Generate a new temporary password for ${member.name}? Their current password stops working immediately.`)) return;
+    try {
+      const result = await firestoreService.resetUserPassword(uid);
+      await log('Password Reset', `Reset password for ${member.name} (${member.type})`);
+      // Shown in a copyable panel rather than an alert() — this value is not recoverable.
+      setResetResult({ name: member.name, password: result.temporaryPassword });
+    } catch (err) {
+      console.error('Failed to reset password:', err);
+      setError('Could not reset that password. Try again.');
+    }
   };
 
-  // Grouped students sorted by class/grade
   const groupedStudents = useMemo(() => {
-    const filtered = allStudents.filter(s => s.name.toLowerCase().includes(rosterSearch.toLowerCase()));
-    const groups: { [key: string]: any[] } = {};
-    
-    filtered.forEach(student => {
+    const filtered = allStudents.filter((s) => (s.name || '').toLowerCase().includes(rosterSearch.toLowerCase()));
+    const groups: Record<string, any[]> = {};
+    filtered.forEach((student) => {
       const key = student.classId || 'Unassigned';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(student);
+      (groups[key] ||= []).push(student);
     });
-
-    return Object.keys(groups).sort().reduce((acc, key) => {
-      acc[key] = groups[key].sort((a, b) => a.name.localeCompare(b.name));
-      return acc;
-    }, {} as { [key: string]: any[] });
+    return Object.keys(groups)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = groups[key].sort((a, b) => a.name.localeCompare(b.name));
+        return acc;
+      }, {} as Record<string, any[]>);
   }, [allStudents, rosterSearch]);
 
+  const parentMatches = useMemo(() => {
+    const q = parentSearch.toLowerCase();
+    if (!q) return allParents.slice(0, 5);
+    return allParents.filter((p) => (p.name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)).slice(0, 5);
+  }, [allParents, parentSearch]);
+
+  const linkedParent = allParents.find((p) => p.uid === studentForm.parentId);
+  const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+
+  const canSubmit =
+    activeTab === 'student'
+      ? !!studentForm.name.trim() && !!studentForm.classId && !!studentForm.parentId
+      : activeTab === 'teacher'
+        ? !!teacherForm.name.trim() && !!teacherForm.email.trim()
+        : !!parentForm.name.trim() && !!parentForm.email.trim();
+
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
-      {/* Header Block */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-             <span className="font-bold text-slate-900 dark:text-white">Admin Portal</span>
-             <span>/</span>
-             <span className="font-medium text-primary">Credential Management</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">Onboard & Directory</h1>
-          <p className="text-sm text-slate-500">Register new academic participants and view student directory tables.</p>
-        </div>
+    <WorkSurface>
+      <PageHeader
+        title="Registration"
+        subtitle="Create accounts, issue credentials and browse the student directory"
+        actions={
+          <Tabs
+            value={activeTab}
+            onChange={(v) => {
+              if (editingId) return;
+              setActiveTab(v);
+              setError(null);
+            }}
+            tabs={[
+              { value: 'student', label: 'Student' },
+              { value: 'teacher', label: 'Teacher' },
+              { value: 'parent', label: 'Parent' },
+              { value: 'roster', label: 'Roster' },
+            ]}
+          />
+        }
+      />
 
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700/30 w-fit shrink-0">
-             <button 
-               onClick={() => { if(!editingId) setActiveTab('student'); }}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'student' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-             >
-                 <Icon name="person_add" /> Student Registration
-             </button>
-             <button
-               onClick={() => { if(!editingId) setActiveTab('teacher'); }}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'teacher' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-             >
-                 <Icon name="co_present" /> Teacher Registration
-             </button>
-             <button
-               onClick={() => { if(!editingId) setActiveTab('parent'); }}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'parent' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-             >
-                 <Icon name="family_restroom" /> Parent Registration
-             </button>
-             <button
-               onClick={() => { if(!editingId) setActiveTab('roster'); }}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'roster' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'} ${editingId ? 'opacity-50 cursor-not-allowed' : ''}`}
-             >
-                 <Icon name="groups" /> Student Roster
-             </button>
-        </div>
-      </div>
-
-      {generatedId && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/50 p-6 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="flex gap-4">
-                <div className="size-12 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-xl shrink-0">
-                    <Icon name="check_circle" />
-                </div>
-                <div>
-                    <h3 className="font-bold text-emerald-950 dark:text-emerald-300">Member Onboarded Successfully</h3>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Database records synced. Write down this generated Login Access ID:
-                    </p>
-                    <div className="mt-3 flex items-center gap-2 flex-wrap">
-                       <code className="px-3 py-1 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 rounded font-mono font-black text-sm">{generatedId}</code>
-                       <button onClick={() => { navigator.clipboard.writeText(generatedId); alert('Login ID copied to clipboard!'); }} className="text-xs font-bold text-primary hover:underline">Copy ID</button>
-                       {generatedPassword && (
-                         <>
-                           <code className="px-3 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 rounded font-mono font-black text-sm">{generatedPassword}</code>
-                           <button onClick={() => { navigator.clipboard.writeText(generatedPassword); alert('Temporary password copied to clipboard!'); }} className="text-xs font-bold text-primary hover:underline">Copy Password</button>
-                         </>
-                       )}
-                    </div>
-                    {generatedPassword && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-2 uppercase tracking-wide">
-                        This temporary password will not be shown again — share it securely now.
-                      </p>
-                    )}
-                </div>
-            </div>
-            <button onClick={() => { setGeneratedId(null); setGeneratedPassword(null); }} className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
-        </div>
+      {editingId && (
+        <InlineNote tone="blue" icon="edit">
+          Editing an existing record — tab switching is locked until you save or cancel.
+        </InlineNote>
       )}
+      {error && <InlineNote tone="blush" icon="priority_high">{error}</InlineNote>}
 
-      {/* Main Tab Render blocks */}
-      {activeTab === 'student' && (
-          <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+      {activeTab === 'roster' ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHeading>Student directory ({allStudents.length})</SectionHeading>
+            <div className="relative">
+              <Icon name="search" className="text-[15px] text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Input
+                value={rosterSearch}
+                onChange={(e) => setRosterSearch(e.target.value)}
+                placeholder="Find a student"
+                aria-label="Find a student"
+                className="h-9 w-[260px] max-w-full pl-9"
+              />
+            </div>
+          </div>
+
+          {allStudents.length === 0 ? (
+            <EmptyState icon="groups" title="No students registered yet" body="Register one on the Student tab and they appear here." />
+          ) : Object.keys(groupedStudents).length === 0 ? (
+            <NoResults title={`No students match “${rosterSearch}”`} onClear={() => setRosterSearch('')} clearLabel="Clear search" />
+          ) : (
+            Object.entries(groupedStudents).map(([className, list]) => (
+              <Card key={className} pad={false}>
+                <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between">
+                  <p className="text-[13px] font-semibold text-slate-900 dark:text-white">{className}</p>
+                  <Badge tone="blue">{list.length}</Badge>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <Th>Student</Th>
+                        <Th>Login ID</Th>
+                        <Th>Guardian</Th>
+                        <Th className="text-right">Actions</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((s) => (
+                        <tr key={s.id}>
+                          <Td>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMember({ ...s, type: 'Student' })}
+                              className="flex items-center gap-2.5 min-w-0 text-left rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <Avatar name={s.name} size={30} />
+                              <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{s.name}</span>
+                            </button>
+                          </Td>
+                          <Td className="text-slate-500">{s.loginId || '—'}</Td>
+                          <Td className="text-slate-500">{s.parentId ? 'Linked' : <span className="text-ink-butter">Not linked</span>}</Td>
+                          <Td className="text-right">
+                            <button
+                              type="button"
+                              onClick={() => startEdit({ ...s, type: 'Student' })}
+                              aria-label={`Edit ${s.name}`}
+                              className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-primary inline-flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <Icon name="edit" className="text-[15px]" />
+                            </button>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <Card className="flex flex-col gap-4 h-fit">
+            <div className="flex items-center justify-between">
+              <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+                {editingId ? 'Edit' : 'New'} {activeTab}
+              </p>
               {editingId && (
-                  <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/40 p-4 rounded-xl flex justify-between items-center">
-                      <div className="flex gap-3 items-center">
-                          <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
-                              <Icon name="edit" />
-                          </div>
-                          <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white">Editing Mode Active</p>
-                              <p className="text-xs text-slate-550">Updating student profile for {studentForm.name}</p>
-                          </div>
-                      </div>
-                      <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600 transition-colors">Cancel Edit</button>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    resetForm();
+                  }}
+                  className="text-[11.5px] font-semibold text-slate-500 hover:text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  Cancel edit
+                </button>
               )}
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
-                      <input
-                          type="text"
-                          placeholder="e.g. John Doe"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={studentForm.name}
-                          onChange={(e) => setStudentForm({...studentForm, name: e.target.value})}
-                      />
+            </div>
+
+            {activeTab === 'student' && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Full name">
+                    <Input value={studentForm.name} onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })} />
+                  </Field>
+                  <Field label="Age">
+                    <Input
+                      type="number"
+                      min={2}
+                      max={25}
+                      value={studentForm.age}
+                      onChange={(e) => setStudentForm({ ...studentForm, age: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Class">
+                  <Select value={studentForm.classId} onChange={(e) => setStudentForm({ ...studentForm, classId: e.target.value })}>
+                    <option value="">Choose a class…</option>
+                    {availableGrades.map((g) => (
+                      <option key={g.id} value={g.name}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <div className="h-px bg-slate-100 dark:bg-slate-800" />
+
+                <div>
+                  <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Link a parent</p>
+                  <p className="mt-1 text-[11.5px] text-slate-500">
+                    The parent sees this child&rsquo;s fees, attendance and reports. Required.
+                  </p>
+                </div>
+
+                {linkedParent ? (
+                  <div className="flex items-center gap-3 bg-tint-blue rounded-[14px] px-3.5 py-3">
+                    <Avatar name={linkedParent.name} size={34} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{linkedParent.name}</p>
+                      <p className="text-[10.5px] text-slate-500 truncate">{linkedParent.email || linkedParent.loginId}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudentForm({ ...studentForm, parentId: '' })}
+                      className="text-[11.5px] font-semibold text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      Change
+                    </button>
                   </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Age</label>
-                      <input
-                          type="number"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={studentForm.age}
-                          onChange={(e) => setStudentForm({...studentForm, age: e.target.value})}
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Icon name="search" className="text-[15px] text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <Input
+                        value={parentSearch}
+                        onChange={(e) => setParentSearch(e.target.value)}
+                        placeholder="Search registered parents"
+                        aria-label="Search registered parents"
+                        className="pl-9"
                       />
-                  </div>
-                  <div className="md:col-span-2">
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Parent / Guardian Account</label>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {parentMatches.length === 0 ? (
+                        <p className="text-[11.5px] text-slate-400 py-1">
+                          No parent matches. Register them on the Parent tab first.
+                        </p>
+                      ) : (
+                        parentMatches.map((p) => (
+                          <button
+                            key={p.uid}
+                            type="button"
+                            onClick={() => setStudentForm({ ...studentForm, parentId: p.uid, parentName: p.name })}
+                            className="flex items-center gap-2.5 px-3 py-2.5 rounded-[13px] bg-slate-50 dark:bg-slate-900/40 hover:bg-tint-blue text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            <Avatar name={p.name} size={30} tint="peach" />
+                            <div className="min-w-0">
+                              <p className="text-[12px] font-semibold text-slate-900 dark:text-white truncate">{p.name}</p>
+                              <p className="text-[10.5px] text-slate-500 truncate">{p.email}</p>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <Field label="Guardian contact">
+                  <Input
+                    value={studentForm.parentContact}
+                    onChange={(e) => setStudentForm({ ...studentForm, parentContact: e.target.value })}
+                    placeholder="Phone number"
+                  />
+                </Field>
+              </>
+            )}
+
+            {activeTab === 'teacher' && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Full name">
+                    <Input value={teacherForm.name} onChange={(e) => setTeacherForm({ ...teacherForm, name: e.target.value })} />
+                  </Field>
+                  <Field label="Email">
+                    <Input
+                      type="email"
+                      value={teacherForm.email}
+                      onChange={(e) => setTeacherForm({ ...teacherForm, email: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Qualification">
+                  <Input
+                    value={teacherForm.qualification}
+                    onChange={(e) => setTeacherForm({ ...teacherForm, qualification: e.target.value })}
+                    placeholder="e.g. B.Ed Mathematics"
+                  />
+                </Field>
+
+                <Field
+                  label="What they teach"
+                  hint="One row per subject per class. A teacher can take different subjects in different classes."
+                >
+                  <div className="flex flex-col gap-2">
+                    {availableGrades.length === 0 || availableCourses.length === 0 ? (
+                      <p className="text-[11.5px] text-slate-400">
+                        Configure class levels and courses under School Settings first.
+                      </p>
+                    ) : (
+                      <>
+                        {teacherAssignments.map((a, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <Select
+                              value={a.classId}
+                              aria-label={`Class for assignment ${i + 1}`}
+                              onChange={(e) =>
+                                setTeacherAssignments((prev) =>
+                                  prev.map((x, j) => (j === i ? { ...x, classId: e.target.value } : x)),
+                                )
+                              }
+                              className="flex-1"
+                            >
+                              <option value="">Class…</option>
+                              {availableGrades.map((g) => (
+                                <option key={g.id} value={g.name}>
+                                  {g.name}
+                                </option>
+                              ))}
+                            </Select>
+                            <Select
+                              value={a.courseCode}
+                              aria-label={`Subject for assignment ${i + 1}`}
+                              onChange={(e) =>
+                                setTeacherAssignments((prev) =>
+                                  prev.map((x, j) => (j === i ? { ...x, courseCode: e.target.value } : x)),
+                                )
+                              }
+                              className="flex-1"
+                            >
+                              <option value="">Subject…</option>
+                              {availableCourses.map((c) => (
+                                <option key={c.id} value={c.code}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </Select>
+                            <button
+                              type="button"
+                              onClick={() => setTeacherAssignments((prev) => prev.filter((_, j) => j !== i))}
+                              aria-label={`Remove assignment ${i + 1}`}
+                              className="size-9 shrink-0 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            >
+                              <Icon name="delete" className="text-[15px]" />
+                            </button>
+                          </div>
+                        ))}
                         <button
                           type="button"
-                          onClick={() => { if (!editingId) setActiveTab('parent'); }}
-                          className="text-[10px] font-black text-primary uppercase hover:underline"
+                          onClick={() => setTeacherAssignments((prev) => [...prev, { classId: '', courseCode: '' }])}
+                          className="self-start flex items-center gap-1.5 text-[11.5px] font-semibold text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
-                          + Register New Parent
+                          <Icon name="add" className="text-[14px]" />
+                          Add a class &amp; subject
                         </button>
-                      </div>
-                      <select
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={studentForm.parentId}
-                          onChange={(e) => {
-                              const parent = allParents.find(p => p.uid === e.target.value);
-                              setStudentForm({
-                                ...studentForm,
-                                parentId: e.target.value,
-                                parentName: parent?.name || studentForm.parentName,
-                              });
-                          }}
-                      >
-                          <option value="">Select a registered parent...</option>
-                          {allParents.map(p => (
-                              <option key={p.uid} value={p.uid}>{p.name} ({p.loginId || 'no ID yet'})</option>
-                          ))}
-                      </select>
-                      {allParents.length === 0 && (
-                        <p className="text-[10px] text-amber-600 mt-1 italic">No parents registered yet. Use "Register New Parent" above first.</p>
-                      )}
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Guardian Contact / Phone</label>
-                      <input
-                          type="text"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          placeholder="e.g. +233 24 123 4567"
-                          value={studentForm.parentContact}
-                          onChange={(e) => setStudentForm({...studentForm, parentContact: e.target.value})}
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Assigned Class / Grade</label>
-                      <select
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={studentForm.classId}
-                          onChange={(e) => setStudentForm({...studentForm, classId: e.target.value})}
-                      >
-                          <option value="">Select Grade</option>
-                          {availableGrades.map(g => (
-                              <option key={g.id} value={g.name}>{g.name}</option>
-                          ))}
-                          {availableGrades.length === 0 && (
-                              <option value="" disabled>No grades configured in Settings</option>
-                          )}
-                      </select>
-                      <p className="text-[10px] text-slate-450 mt-1 italic">Fees are set by the administration in Settings.</p>
-                  </div>
-              </div>
-              <div className="flex justify-end pt-4">
-                  <button 
-                      onClick={handleRegister} 
-                      disabled={isSubmitting || !studentForm.name}
-                      className="px-8 py-3 bg-primary text-white font-bold rounded-lg shadow-lg hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 text-sm"
-                  >
-                      {isSubmitting ? <Icon name="sync" className="animate-spin" /> : editingId ? <Icon name="save" /> : <Icon name="person_add" />}
-                      {isSubmitting ? 'Syncing...' : editingId ? 'Update Credentials' : 'Register Student'}
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {activeTab === 'teacher' && (
-          <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
-              {editingId && (
-                  <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/40 p-4 rounded-xl flex justify-between items-center">
-                      <div className="flex gap-3 items-center">
-                          <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
-                              <Icon name="edit" />
-                          </div>
-                          <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white">Editing Mode Active</p>
-                              <p className="text-xs text-slate-550">Updating teacher profile for {teacherForm.name}</p>
-                          </div>
-                      </div>
-                      <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600 transition-colors">Cancel Edit</button>
-                  </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Teacher Name</label>
-                      <input 
-                          type="text" 
-                          placeholder="e.g. Mrs. Emily Mensah" 
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={teacherForm.name}
-                          onChange={(e) => setTeacherForm({...teacherForm, name: e.target.value})}
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
-                      <input 
-                          type="email" 
-                          placeholder="e.g. emily@school.edu" 
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={teacherForm.email}
-                          onChange={(e) => setTeacherForm({...teacherForm, email: e.target.value})}
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Qualification / Degree</label>
-                      <input 
-                          type="text" 
-                          placeholder="e.g. Bachelor of Education" 
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={teacherForm.qualification}
-                          onChange={(e) => setTeacherForm({...teacherForm, qualification: e.target.value})}
-                      />
-                  </div>
-
-                  {/* Assigned Classes Multi-check */}
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Assigned Class / Grade Levels</label>
-                      <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg max-h-40 overflow-y-auto space-y-2">
-                         {availableGrades.map(g => (
-                            <label key={g.id} className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  checked={teacherForm.assignedClasses.includes(g.name)}
-                                  onChange={(e) => {
-                                      const list = e.target.checked 
-                                        ? [...teacherForm.assignedClasses, g.name]
-                                        : teacherForm.assignedClasses.filter(c => c !== g.name);
-                                      setTeacherForm({ ...teacherForm, assignedClasses: list });
-                                  }}
-                                  className="w-4 h-4 text-primary bg-slate-100 rounded focus:ring-primary"
-                                />
-                                {g.name}
-                            </label>
-                         ))}
-                         {availableGrades.length === 0 && <span className="text-[10px] text-slate-400 italic">No grades found. Please configure them in Settings.</span>}
-                      </div>
-                  </div>
-
-                  {/* Assigned Courses Catalog Check */}
-                  <div className="md:col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Assigned Courses / Subjects</label>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg max-h-40 overflow-y-auto">
-                         {availableCourses.map(c => (
-                            <label key={c.id} className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  checked={teacherForm.assignedCourses.includes(c.code)}
-                                  onChange={(e) => {
-                                      const list = e.target.checked 
-                                        ? [...teacherForm.assignedCourses, c.code]
-                                        : teacherForm.assignedCourses.filter(code => code !== c.code);
-                                      setTeacherForm({ ...teacherForm, assignedCourses: list });
-                                  }}
-                                  className="w-4 h-4 text-primary bg-slate-100 rounded focus:ring-primary"
-                                />
-                                <div>
-                                   <p className="font-black text-[10px] text-primary">{c.code}</p>
-                                   <p className="font-semibold text-slate-500 text-[11px] truncate w-32">{c.name}</p>
-                                </div>
-                            </label>
-                         ))}
-                         {availableCourses.length === 0 && <span className="text-[10px] text-slate-400 italic">No courses found.</span>}
-                      </div>
-                  </div>
-              </div>
-              <div className="flex justify-end pt-4">
-                  <button 
-                      onClick={handleRegister} 
-                      disabled={isSubmitting || !teacherForm.name || !teacherForm.email}
-                      className="px-8 py-3 bg-primary text-white font-bold rounded-lg shadow-lg hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 text-sm"
-                  >
-                      {isSubmitting ? <Icon name="sync" className="animate-spin" /> : editingId ? <Icon name="save" /> : <Icon name="school" />}
-                      {isSubmitting ? 'Syncing...' : editingId ? 'Update Credentials' : 'Register Teacher'}
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {activeTab === 'parent' && (
-          <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
-              {editingId && (
-                  <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/40 p-4 rounded-xl flex justify-between items-center">
-                      <div className="flex gap-3 items-center">
-                          <div className="size-8 bg-primary rounded-lg flex items-center justify-center text-white">
-                              <Icon name="edit" />
-                          </div>
-                          <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white">Editing Mode Active</p>
-                              <p className="text-xs text-slate-550">Updating parent profile for {parentForm.name}</p>
-                          </div>
-                      </div>
-                      <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600 transition-colors">Cancel Edit</button>
-                  </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Parent / Guardian Name</label>
-                      <input
-                          type="text"
-                          placeholder="e.g. Mr. Kwame Nkrumah"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={parentForm.name}
-                          onChange={(e) => setParentForm({...parentForm, name: e.target.value})}
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
-                      <input
-                          type="email"
-                          placeholder="e.g. kwame@example.com"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={parentForm.email}
-                          onChange={(e) => setParentForm({...parentForm, email: e.target.value})}
-                      />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Contact</label>
-                      <input
-                          type="text"
-                          placeholder="e.g. +233 24 123 4567"
-                          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                          value={parentForm.contact}
-                          onChange={(e) => setParentForm({...parentForm, contact: e.target.value})}
-                      />
-                  </div>
-              </div>
-              <p className="text-[10px] text-slate-450 italic">A login ID and temporary password will be generated once you register this parent — you can then attach their children under Student Registration.</p>
-              <div className="flex justify-end pt-4">
-                  <button
-                      onClick={handleRegister}
-                      disabled={isSubmitting || !parentForm.name}
-                      className="px-8 py-3 bg-primary text-white font-bold rounded-lg shadow-lg hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 text-sm"
-                  >
-                      {isSubmitting ? <Icon name="sync" className="animate-spin" /> : editingId ? <Icon name="save" /> : <Icon name="family_restroom" />}
-                      {isSubmitting ? 'Syncing...' : editingId ? 'Update Credentials' : 'Register Parent'}
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {/* Student Roster Tab */}
-      {activeTab === 'roster' && (
-          <div className="space-y-6 max-w-6xl mx-auto">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                  <div>
-                      <h3 className="font-bold text-slate-900 dark:text-white text-lg">School Student Roster</h3>
-                      <p className="text-xs text-slate-500 mt-1">Complete enrollment sheet grouped by assigned class levels.</p>
-                  </div>
-                  <div className="relative w-full md:w-80">
-                      <Icon name="search" className="absolute left-3 top-2.5 text-slate-400 text-sm" />
-                      <input 
-                          type="text" 
-                          placeholder="Search student by name..." 
-                          value={rosterSearch}
-                          onChange={(e) => setRosterSearch(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-primary outline-none text-slate-900 dark:text-white font-semibold" 
-                      />
-                  </div>
-              </div>
-
-              <div className="space-y-8">
-                  {Object.keys(groupedStudents).map(className => (
-                      <div key={className} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                          <div className="p-5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-205 dark:border-slate-750 flex items-center justify-between">
-                              <h4 className="font-bold text-slate-850 dark:text-slate-100 flex items-center gap-2">
-                                  <Icon name="school" className="text-primary text-lg" />
-                                  {className}
-                              </h4>
-                              <span className="px-2.5 py-0.5 bg-primary/10 text-primary rounded-md text-[10px] font-black uppercase">
-                                  {groupedStudents[className].length} {groupedStudents[className].length === 1 ? 'Student' : 'Students'}
-                              </span>
-                          </div>
-
-                          <div className="overflow-x-auto">
-                              <table className="w-full text-left">
-                                  <thead className="bg-slate-50/50 dark:bg-slate-900/20 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-100 dark:border-slate-800">
-                                      <tr>
-                                          <th className="px-6 py-3.5">Full Name</th>
-                                          <th className="px-6 py-3.5">Admission Number</th>
-                                          <th className="px-6 py-3.5">Access Login ID</th>
-                                          <th className="px-6 py-3.5">Parent/Guardian</th>
-                                          <th className="px-6 py-3.5">Guardian Contact</th>
-                                          <th className="px-6 py-3.5 text-right">Actions</th>
-                                      </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                      {groupedStudents[className].map((student, i) => (
-                                          <tr key={student.id || i} className="hover:bg-slate-50/80 dark:hover:bg-slate-850/40 transition-colors">
-                                              <td className="px-6 py-4">
-                                                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{student.name}</span>
-                                              </td>
-                                              <td className="px-6 py-4 text-xs font-semibold text-slate-500">
-                                                  {student.admissionNumber || 'N/A'}
-                                              </td>
-                                              <td className="px-6 py-4">
-                                                  <span className="text-xs font-mono font-black text-primary px-2 py-0.5 bg-primary/5 rounded border border-primary/10">
-                                                      {student.loginId || 'SYNCING...'}
-                                                  </span>
-                                              </td>
-                                              <td className="px-6 py-4 text-xs font-bold text-slate-600 dark:text-slate-350">
-                                                  {student.parentName || 'N/A'}
-                                              </td>
-                                              <td className="px-6 py-4 text-xs text-slate-500">
-                                                  {student.parentContact || 'N/A'}
-                                              </td>
-                                              <td className="px-6 py-4 text-right flex items-center justify-end gap-3.5">
-                                                  <button 
-                                                      onClick={() => startEdit({ ...student, type: 'Student' })}
-                                                      className="text-[10px] font-black text-slate-400 uppercase hover:text-primary transition-colors flex items-center gap-1"
-                                                  >
-                                                      <Icon name="edit" className="text-sm" /> Edit
-                                                  </button>
-                                                  <button 
-                                                      onClick={() => setSelectedMember({ ...student, type: 'Student' })}
-                                                      className="text-[10px] font-black text-primary uppercase hover:underline"
-                                                  >
-                                                      View File
-                                                  </button>
-                                              </td>
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
-                          </div>
-                      </div>
-                  ))}
-
-                  {Object.keys(groupedStudents).length === 0 && (
-                      <div className="p-16 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-center text-slate-400 italic">
-                          No students found matching your search term.
-                      </div>
-                  )}
-              </div>
-          </div>
-      )}
-
-      {/* Recent Onboardings (Hidden in roster view to keep it clean) */}
-      {activeTab !== 'roster' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <h3 className="font-bold text-slate-900 dark:text-white">Recently Registered Members</h3>
-            <p className="text-xs text-slate-500">Live feed of latest synchronization with the Central Register.</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500">
-                <tr>
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Type</th>
-                  <th className="px-6 py-4">Login Access ID</th>
-                  <th className="px-6 py-4">Date Added</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                 {recentMembers.map((member, i) => (
-                    <tr key={member.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                      <td className="px-6 py-4">
-                         <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{member.name}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${member.type === 'Student' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                           {member.type}
-                         </span>
-                      </td>
-                      <td className="px-6 py-4">
-                         <span className="text-xs font-mono font-black text-primary px-2 py-1 bg-primary/5 rounded border border-primary/10">
-                            {member.loginId || member.id?.slice(0, 8).toUpperCase() || 'SYNCING...'}
-                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-xs font-medium text-slate-500">
-                        {member.createdAt ? new Date(member.createdAt).toLocaleDateString() : 'Just now'}
-                      </td>
-                      <td className="px-6 py-4 text-right flex items-center justify-end gap-4">
-                         {member.type !== 'Student' && (
-                           <button
-                             onClick={() => handleResetPassword(member)}
-                             className="text-[10px] font-black text-slate-400 uppercase hover:text-amber-600 transition-colors flex items-center gap-1"
-                           >
-                             <Icon name="key" className="text-sm" /> Reset Password
-                           </button>
-                         )}
-                         <button
-                           onClick={() => startEdit(member)}
-                           className="text-[10px] font-black text-slate-400 uppercase hover:text-primary transition-colors flex items-center gap-1"
-                         >
-                           <Icon name="edit" className="text-sm" /> Edit
-                         </button>
-                         <button
-                           onClick={() => setSelectedMember(member)}
-                           className="text-[10px] font-black text-primary uppercase hover:underline"
-                         >
-                           View File
-                         </button>
-                      </td>
-                    </tr>
-                 ))}
-                 {recentMembers.length === 0 && (
-                   <tr>
-                     <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No members registered in this session yet.</td>
-                   </tr>
-                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Member Detail Dialog */}
-      {selectedMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
-          <div className="bg-white dark:bg-[#1a202c] rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col border border-slate-200 dark:border-slate-800">
-             {/* Modal Header */}
-             <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/20">
-                <div className="flex items-center gap-4">
-                   <div className={`size-12 rounded-2xl flex items-center justify-center text-2xl ${selectedMember.type === 'Student' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-500'}`}>
-                      <Icon name={selectedMember.type === 'Student' ? 'person' : 'work_history'} />
-                   </div>
-                   <div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedMember.name}</h3>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{selectedMember.type} • Profile Record</p>
-                   </div>
-                </div>
-                <button 
-                  onClick={() => setSelectedMember(null)} 
-                  className="size-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 transition-colors"
-                >
-                   <Icon name="close" />
-                </button>
-             </div>
-
-             {/* Modal Body */}
-             <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Access System ID</p>
-                       <p className="text-sm font-mono font-bold text-primary">{selectedMember.loginId || 'N/A'}</p>
-                    </div>
-                    {selectedMember.type === 'Student' ? (
-                       <>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Assigned Grade</p>
-                             <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedMember.classId || 'Unassigned'}</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Student Age</p>
-                             <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedMember.age || 'N/A'} yrs old</p>
-                          </div>
-                       </>
-                    ) : (
-                       <>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Credentials Email</p>
-                             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{selectedMember.email}</p>
-                          </div>
-                          <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Highest Qualification</p>
-                             <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedMember.qualification || 'N/A'}</p>
-                          </div>
-                       </>
+                      </>
                     )}
-                 </div>
+                  </div>
+                </Field>
 
-                 {selectedMember.type === 'Student' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="space-y-4">
-                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                             <Icon name="family_restroom" /> Parent / Guardian Info
-                          </h4>
-                          <div className="p-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/85 rounded-3xl space-y-4">
-                             <div>
-                               <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Guardian Fullname</p>
-                               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedMember.parentName || 'N/A'}</p>
-                             </div>
-                             <div>
-                               <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Emergency Contact</p>
-                               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedMember.parentContact || 'Private'}</p>
-                             </div>
-                          </div>
-                       </div>
+                {teacherAssignments.length === 0 && (
+                  <InlineNote tone="butter" icon="warning">
+                    With nothing here they cannot enter results for anyone, and no class will expect a subject from them.
+                  </InlineNote>
+                )}
+              </>
+            )}
 
-                       <div className="space-y-4">
-                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                             <Icon name="monitoring" /> Student Performance Stubs
-                          </h4>
-                          <div className="p-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/85 rounded-3xl space-y-4">
-                             <div className="flex justify-between items-center">
-                                <span className="text-xs font-semibold text-slate-555">Attendance Rate:</span>
-                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                                   {memberExtraInfo.attendance ? `${memberExtraInfo.attendance.rate}% (${memberExtraInfo.attendance.present}/${memberExtraInfo.attendance.total} days)` : 'N/A'}
-                                </span>
-                             </div>
-                             <div className="flex justify-between items-center">
-                                <span className="text-xs font-semibold text-slate-555">Outstanding Fees:</span>
-                                <span className="text-sm font-bold text-red-600">
-                                   {memberExtraInfo.fees ? `GH₵${memberExtraInfo.fees.reduce((acc, curr) => acc + (parseFloat(curr.totalAmount) - parseFloat(curr.amountPaid)), 0).toLocaleString()}` : 'N/A'}
-                                </span>
-                             </div>
-                             <div className="flex justify-between items-center">
-                                <span className="text-xs font-semibold text-slate-555">Term Grade Report Cards:</span>
-                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                                   {memberExtraInfo.reports ? `${memberExtraInfo.reports.length} Reports` : 'N/A'}
-                                </span>
-                             </div>
-                          </div>
-                       </div>
-                    </div>
-                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <div className="space-y-4">
-                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                             <Icon name="class" /> Classes Assigned
-                          </h4>
-                          <div className="p-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/85 rounded-3xl flex flex-wrap gap-2">
-                             {selectedMember.assignedClasses?.map((cls: string) => (
-                                <span key={cls} className="px-3 py-1 bg-primary/10 text-primary rounded-lg text-xs font-bold">{cls}</span>
-                             )) || <span className="text-xs text-slate-400 italic">No classes assigned</span>}
-                          </div>
-                       </div>
+            {activeTab === 'parent' && (
+              <>
+                <Field label="Full name">
+                  <Input value={parentForm.name} onChange={(e) => setParentForm({ ...parentForm, name: e.target.value })} />
+                </Field>
+                <Field label="Email" hint="Used to sign in, and where their receipts go.">
+                  <Input type="email" value={parentForm.email} onChange={(e) => setParentForm({ ...parentForm, email: e.target.value })} />
+                </Field>
+                <Field label="Contact number">
+                  <Input value={parentForm.contact} onChange={(e) => setParentForm({ ...parentForm, contact: e.target.value })} />
+                </Field>
+              </>
+            )}
 
-                       <div className="space-y-4">
-                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                             <Icon name="auto_stories" /> Subjects / Courses Taught
-                          </h4>
-                          <div className="p-6 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/85 rounded-3xl flex flex-wrap gap-2">
-                             {selectedMember.assignedCourses?.map((crs: string) => (
-                                <span key={crs} className="px-3 py-1 bg-amber-500/10 text-amber-600 rounded-lg text-xs font-bold">{crs}</span>
-                             )) || <span className="text-xs text-slate-400 italic">No courses assigned</span>}
-                          </div>
-                       </div>
-                    </div>
-                 )}
-             </div>
+            <InlineNote icon="lock">
+              Creating an account is written to the audit log with your name and the time.
+            </InlineNote>
 
-             {/* Modal Footer */}
-             <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 rounded-b-[2.5rem]">
-                <button 
-                  onClick={() => setSelectedMember(null)}
-                  className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-colors"
+            <Button icon={editingId ? 'save' : 'person_add'} block loading={isSubmitting} disabled={!canSubmit} onClick={handleRegister}>
+              {editingId ? 'Save changes' : `Create ${activeTab}`}
+            </Button>
+          </Card>
+
+          <div className="flex flex-col gap-4">
+            {generatedId && (
+              <div className="bg-tint-mint rounded-panel p-5 flex flex-col gap-3.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="size-[26px] rounded-[9px] bg-success text-white flex items-center justify-center">
+                    <Icon name="check" className="text-[15px]" strokeWidth={2.6} />
+                  </span>
+                  <p className="text-sm font-bold tracking-[-0.02em] text-ink-mint">Account created</p>
+                </div>
+                <p className="text-[11.5px] leading-relaxed text-ink-mint">
+                  Give these to the person now. {generatedPassword ? 'The password is shown once and cannot be recovered.' : ''}
+                </p>
+                <div className="bg-surface-light dark:bg-surface-dark rounded-[14px] p-4 flex flex-col gap-3">
+                  <CredentialRow label="Login ID" value={generatedId} />
+                  {generatedPassword && (
+                    <>
+                      <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                      <CredentialRow label="Temporary password" value={generatedPassword} />
+                    </>
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  block
+                  onClick={() => {
+                    setGeneratedId(null);
+                    setGeneratedPassword(null);
+                  }}
                 >
-                   Close Record File
-                </button>
-             </div>
+                  Done
+                </Button>
+              </div>
+            )}
+
+            <Card className="flex flex-col gap-3">
+              <SectionHeading>Recently added</SectionHeading>
+              {loadingMembers ? (
+                <SkeletonTable rows={3} />
+              ) : recentMembers.length === 0 ? (
+                <p className="text-[11.5px] text-slate-400 leading-relaxed">Nobody registered yet.</p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {recentMembers.slice(0, 8).map((m) => (
+                    <div key={`${m.type}-${m.id}`} className="flex items-center gap-2.5 px-3 py-2.5 rounded-[13px] bg-slate-50 dark:bg-slate-900/40">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMember(m)}
+                        className="flex items-center gap-2.5 min-w-0 flex-1 text-left rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Avatar name={m.name} size={30} tint={TYPE_TINT[m.type] ?? 'blue'} />
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white truncate">{m.name}</p>
+                          <p className="text-[10.5px] text-slate-500 truncate">
+                            {m.type}
+                            {m.loginId ? ` · ${m.loginId}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(m)}
+                        aria-label={`Edit ${m.name}`}
+                        className="size-8 shrink-0 rounded-[10px] bg-surface-light dark:bg-surface-dark text-slate-500 hover:text-primary flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Icon name="edit" className="text-[15px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
         </div>
       )}
-    </div>
+
+      {/* Member detail */}
+      <Drawer
+        open={!!selectedMember}
+        onClose={() => setSelectedMember(null)}
+        title={selectedMember?.name ?? ''}
+        subtitle={selectedMember ? `${selectedMember.type}${selectedMember.loginId ? ` · ${selectedMember.loginId}` : ''}` : undefined}
+        footer={
+          selectedMember && selectedMember.type !== 'Student' ? (
+            <>
+              <Button variant="secondary" block onClick={() => startEdit(selectedMember)}>
+                Edit
+              </Button>
+              <Button variant="danger" block icon="key" onClick={() => handleResetPassword(selectedMember)}>
+                Reset password
+              </Button>
+            </>
+          ) : (
+            <Button variant="secondary" block onClick={() => selectedMember && startEdit(selectedMember)}>
+              Edit record
+            </Button>
+          )
+        }
+      >
+        {selectedMember && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3.5">
+              <Avatar name={selectedMember.name} size={52} tint={TYPE_TINT[selectedMember.type] ?? 'blue'} />
+              <div className="min-w-0">
+                <p className="text-[15px] font-bold text-slate-900 dark:text-white truncate">{selectedMember.name}</p>
+                <p className="text-[11.5px] text-slate-500 truncate">
+                  {selectedMember.email || selectedMember.classId || selectedMember.type}
+                </p>
+              </div>
+            </div>
+
+            {selectedMember.type === 'Student' ? (
+              <>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-tint-mint rounded-[14px] px-3.5 py-3">
+                    <p className="text-[10.5px] text-slate-600 dark:text-slate-400">Attendance</p>
+                    <p className="mt-1 text-lg font-bold text-ink-mint">
+                      {memberExtraInfo.attendance ? `${Math.round(memberExtraInfo.attendance.rate)}%` : '—'}
+                    </p>
+                  </div>
+                  <div className="bg-tint-blue rounded-[14px] px-3.5 py-3">
+                    <p className="text-[10.5px] text-slate-600 dark:text-slate-400">Reports</p>
+                    <p className="mt-1 text-lg font-bold text-ink-blue">{memberExtraInfo.reports?.length ?? 0}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white mb-2">Fees</p>
+                  {!memberExtraInfo.fees?.length ? (
+                    <p className="text-[11.5px] text-slate-400">Nothing billed yet.</p>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      {memberExtraInfo.fees.map((f: any) => {
+                        const bal = Math.max(0, feeBilled(f) - feePaid(f));
+                        return (
+                          <div key={f.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-2.5">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-medium text-slate-900 dark:text-white truncate">{f.type || 'Fee'}</p>
+                              <p className="text-[10.5px] text-slate-400">{f.term}</p>
+                            </div>
+                            <Badge tone={bal === 0 ? 'mint' : 'blush'}>{bal === 0 ? 'Paid' : ghs(bal)}</Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {selectedMember.qualification && (
+                  <div className="bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">Qualification</p>
+                    <p className="mt-1 text-[12.5px] text-slate-900 dark:text-white">{selectedMember.qualification}</p>
+                  </div>
+                )}
+                {!!selectedMember.assignedClasses?.length && (
+                  <div className="bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">Classes</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {selectedMember.assignedClasses.map((c: string) => (
+                        <Badge key={c} tone="blue">
+                          {c}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {!!selectedMember.assignedCourses?.length && (
+                  <div className="bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">Courses</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {selectedMember.assignedCourses.map((c: string) => (
+                        <Badge key={c} tone="lilac">
+                          {c}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
+
+      {/* One-time password after a reset */}
+      <Drawer
+        open={!!resetResult}
+        onClose={() => setResetResult(null)}
+        title="New temporary password"
+        subtitle={resetResult?.name}
+        footer={
+          <Button block onClick={() => setResetResult(null)}>
+            Done
+          </Button>
+        }
+      >
+        {resetResult && (
+          <div className="flex flex-col gap-4">
+            <InlineNote tone="blush" icon="warning">
+              This is shown once and cannot be recovered. Their old password stopped working the moment you generated this.
+            </InlineNote>
+            <div className="bg-slate-50 dark:bg-slate-900/40 rounded-[14px] p-4">
+              <CredentialRow label="Temporary password" value={resetResult.password} />
+            </div>
+            <InlineNote icon="lock">
+              Hand it over in person or by a channel you trust. They will be asked to change it at first sign-in.
+            </InlineNote>
+          </div>
+        )}
+      </Drawer>
+    </WorkSurface>
   );
 };

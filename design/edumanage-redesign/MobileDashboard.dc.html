@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .ico { stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 56px; font-size: 10px; font-weight: 500; color: #94a3b8; }
+    .tab svg { width: 22px; height: 22px; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="background: #195de6; padding: 18px 18px 22px; display: flex; flex-direction: column; gap: 16px; border-radius: 0 0 24px 24px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 34px; height: 34px; border-radius: 11px; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; color: #ffffff;">
+          <svg class="ico" style="width: 19px; height: 19px;" viewBox="0 0 24 24"><path d="M12 4L2.5 9 12 14l9.5-5L12 4z"/><path d="M6.5 11.5V16c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4.5"/></svg>
+        </div>
+        <span style="font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">EduManage</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ffffff; position: relative;">
+          <svg class="ico" style="width: 22px; height: 22px;" viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>
+          <span style="position: absolute; top: 9px; right: 9px; width: 16px; height: 16px; border-radius: 999px; background: #ffffff; color: #195de6; font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center;">4</span>
+        </div>
+        <div style="width: 38px; height: 38px; border-radius: 999px; background: rgba(255,255,255,0.2); color: #ffffff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;">SM</div>
+      </div>
+    </div>
+    <div>
+      <h1 style="margin: 0; font-size: 25px; font-weight: 700; color: #ffffff; letter-spacing: -0.03em;">Hi, Sarah</h1>
+      <p style="margin: 4px 0 0; font-size: 12.5px; color: rgba(255,255,255,0.75);">5 sessions today &bull; 23 grades pending</p>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 16px 18px 0; display: flex; flex-direction: column; gap: 18px;">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div style="background: #eaf0fe; border-radius: 18px; padding: 14px 15px;">
+        <div style="width: 30px; height: 30px; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #195de6; margin-bottom: 9px;"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><circle cx="9.5" cy="9" r="3"/><circle cx="17" cy="10" r="2.4"/><path d="M3 19.4a6.5 6.5 0 0 1 13 0"/><path d="M16.4 15.4a5 5 0 0 1 5 3.6"/></svg></div>
+        <p style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.03em;">142</p>
+        <p style="margin: 1px 0 0; font-size: 11px; color: #475569;">Total students</p>
+      </div>
+      <div style="background: #fdf0e6; border-radius: 18px; padding: 14px 15px;">
+        <div style="width: 30px; height: 30px; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: center; color: #d1690c; margin-bottom: 9px;"><svg class="ico" style="width: 16px; height: 16px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.2v5.1l3.2 1.9"/></svg></div>
+        <p style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.03em;">23</p>
+        <p style="margin: 1px 0 0; font-size: 11px; color: #475569;">Pending grades</p>
+      </div>
+    </div>
+
+    <div style="background: #eaf0fe; border-radius: 20px; padding: 15px 16px 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+        <div>
+          <p style="margin: 0; font-size: 12.5px; font-weight: 600; color: #195de6;">Class average score</p>
+          <p style="margin: 2px 0 0; font-size: 10px; color: #64748b;">Grade 9 &bull; this term</p>
+        </div>
+        <span style="font-size: 19px; font-weight: 700; color: #195de6; letter-spacing: -0.03em;">83%</span>
+      </div>
+      <svg viewBox="0 0 320 86" style="width: 100%; height: 76px;">
+        <defs><linearGradient id="mArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#195de6" stop-opacity="0.3"/><stop offset="100%" stop-color="#195de6" stop-opacity="0.02"/></linearGradient></defs>
+        <path d="M8,52 C28,52 28,42 48,42 C68,42 68,47 88,47 C108,47 108,34 128,34 C148,34 148,39 168,39 C188,39 188,28 208,28 C228,28 228,33 248,33 C268,33 268,22 312,22 L312,74 L8,74 Z" fill="url(#mArea)"/>
+        <path d="M8,52 C28,52 28,42 48,42 C68,42 68,47 88,47 C108,47 108,34 128,34 C148,34 148,39 168,39 C188,39 188,28 208,28 C228,28 228,33 248,33 C268,33 268,22 312,22" fill="none" stroke="#195de6" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="312" cy="22" r="4" fill="#195de6" stroke="#ffffff" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 11px; min-height: 0;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <p style="margin: 0; font-size: 14px; font-weight: 600;">Today&#39;s schedule</p>
+        <span style="font-size: 11.5px; font-weight: 600; color: #195de6;">Full week</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <div style="display: flex; align-items: center; gap: 12px; background: #ffffff; border-radius: 16px; padding: 13px 14px; min-height: 48px;">
+          <div style="width: 36px; height: 36px; border-radius: 11px; background: #eaf0fe; display: flex; align-items: center; justify-content: center; color: #195de6; flex-shrink: 0;"><svg class="ico" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3H19v18H5.8A1.8 1.8 0 0 1 4 19.2z"/><path d="M4 17h15"/></svg></div>
+          <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 13px; font-weight: 600;">Grade 9 &bull; Sec D</p><p style="margin: 2px 0 0; font-size: 11px; color: #64748b;">Algebra &bull; Room B12</p></div>
+          <span style="font-size: 11.5px; color: #94a3b8; flex-shrink: 0;">08:00</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; background: #195de6; border-radius: 16px; padding: 13px 14px; min-height: 48px; box-shadow: 0 12px 26px -14px rgba(25,93,230,0.9);">
+          <div style="width: 36px; height: 36px; border-radius: 11px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: #ffffff; flex-shrink: 0;"><svg class="ico" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3.2 19.6a6.4 6.4 0 0 1 10.6-4.6"/><path d="M15 18.2l2 2 4-4.2"/></svg></div>
+          <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 13px; font-weight: 600; color: #ffffff;">Attendance &bull; Sec C</p><p style="margin: 2px 0 0; font-size: 11px; color: rgba(255,255,255,0.75);">Not yet taken</p></div>
+          <span style="font-size: 11.5px; font-weight: 600; color: #ffffff; background: rgba(255,255,255,0.22); padding: 5px 11px; border-radius: 999px; flex-shrink: 0;">Now</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; background: #ffffff; border-radius: 16px; padding: 13px 14px; min-height: 48px;">
+          <div style="width: 36px; height: 36px; border-radius: 11px; background: #f1edfd; display: flex; align-items: center; justify-content: center; color: #7c3aed; flex-shrink: 0;"><svg class="ico" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M4 19.5h16"/><path d="M6 15l4-5 3 3 5-7.5"/></svg></div>
+          <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 13px; font-weight: 600;">Report entry</p><p style="margin: 2px 0 0; font-size: 11px; color: #64748b;">Grade 9 &bull; Term 1</p></div>
+          <span style="font-size: 11.5px; color: #94a3b8; flex-shrink: 0;">14:30</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; background: #ffffff; border-radius: 16px; padding: 13px 14px; min-height: 48px;">
+          <div style="width: 36px; height: 36px; border-radius: 11px; background: #e8f6ee; display: flex; align-items: center; justify-content: center; color: #0b8f61; flex-shrink: 0;"><svg class="ico" style="width: 17px; height: 17px;" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/></svg></div>
+          <div style="flex: 1; min-width: 0;"><p style="margin: 0; font-size: 13px; font-weight: 600;">Grade 9 &bull; Sec B</p><p style="margin: 2px 0 0; font-size: 11px; color: #64748b;">Geometry &bull; Room B12</p></div>
+          <span style="font-size: 11.5px; color: #94a3b8; flex-shrink: 0;">15:30</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border-top: 1px solid #eef2f7; display: flex; padding: 4px 6px 10px;">
+    <div class="tab" style="color: #195de6; font-weight: 600;"><svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Home</div>
+    <div class="tab"><svg class="ico" viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3.2 19.6a6.4 6.4 0 0 1 10.6-4.6"/><path d="M15 18.2l2 2 4-4.2"/></svg>Register</div>
+    <div class="tab"><svg class="ico" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/><path d="M9 13.5h6M9 17h4"/></svg>Work</div>
+    <div class="tab"><svg class="ico" viewBox="0 0 24 24"><path d="M4 19.5h16"/><path d="M6 15l4-5 3 3 5-7.5"/></svg>Reports</div>
+    <div class="tab"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>More</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

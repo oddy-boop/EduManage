@@ -1,8 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
 import { SubjectMergeStatus, MergedStudentSubjects } from '../../types';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Avatar, Badge, Button, Card, Chip, EmptyState, InlineNote, Input, PageHeader, ProgressBar, SkeletonTable, StatTile,
+} from '../../components/ui';
+import { SUBJECT_MAX, gradeFor } from '../../lib/grading';
 
 export const TeacherClassReview: React.FC = () => {
   const { user } = useAuth();
@@ -14,10 +19,14 @@ export const TeacherClassReview: React.FC = () => {
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [finalizing, setFinalizing] = useState(false);
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   useEffect(() => {
-    firestoreService.getSystemSettings()
-      .then(settings => { if (settings?.current_term) setCurrentTerm(settings.current_term); })
+    firestoreService
+      .getSystemSettings()
+      .then((settings) => {
+        if (settings?.current_term) setCurrentTerm(settings.current_term);
+      })
       .catch(() => {});
   }, []);
 
@@ -26,22 +35,23 @@ export const TeacherClassReview: React.FC = () => {
     const unsub = firestoreService.getGrades((data) => {
       const mine = data.filter((g: any) => g.classTeacherId === user.uid);
       setMyClasses(mine);
-      if (mine.length > 0 && !activeClass) setActiveClass(mine[0].name);
+      setActiveClass((prev) => prev || mine[0]?.name || '');
       setLoading(false);
     });
     return () => unsub();
-  }, [user]);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!activeClass || !currentTerm) return;
-    firestoreService.getSubjectMergeStatus(activeClass, currentTerm)
+    firestoreService
+      .getSubjectMergeStatus(activeClass, currentTerm)
       .then(setMergeStatus)
       .catch(() => setMergeStatus(null));
   }, [activeClass, currentTerm]);
 
   useEffect(() => {
     if (!activeClass || !currentTerm) return;
-    const unsub = firestoreService.getMergedSubjectReports(activeClass, currentTerm, (data) => setMerged(data));
+    const unsub = firestoreService.getMergedSubjectReports(activeClass, currentTerm, setMerged);
     return () => unsub();
   }, [activeClass, currentTerm]);
 
@@ -52,18 +62,19 @@ export const TeacherClassReview: React.FC = () => {
   };
 
   const handleFinalize = async () => {
+    setStatus(null);
     if (!mergeStatus?.allComplete) {
-      alert("All subjects must be submitted before you can finalize this class's reports.");
+      setStatus({ tone: 'bad', text: 'Every subject must be submitted before this class can be finalized.' });
       return;
     }
     if (!window.confirm(`Finalize and submit ${activeClass}'s report cards (${currentTerm}) for Admin approval?`)) return;
+    setFinalizing(true);
     try {
-      setFinalizing(true);
       const result = await firestoreService.finalizeClassReports(activeClass, currentTerm, remarks);
-      alert(`${result.finalizedCount} report card(s) submitted for Admin approval.`);
+      setStatus({ tone: 'ok', text: `${result.finalizedCount} report card(s) submitted for admin approval.` });
     } catch (error) {
-      console.error("Finalize failed:", error);
-      alert(error instanceof Error ? error.message : "Failed to finalize reports.");
+      console.error('Finalize failed:', error);
+      setStatus({ tone: 'bad', text: error instanceof Error ? error.message : 'Could not finalize the reports.' });
     } finally {
       setFinalizing(false);
     }
@@ -71,123 +82,176 @@ export const TeacherClassReview: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-72 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={5} />
+      </WorkSurface>
     );
   }
 
   if (myClasses.length === 0) {
     return (
-      <div className="p-12 text-center text-slate-400 max-w-lg mx-auto">
-        <Icon name="groups" className="text-6xl mb-4 mx-auto opacity-30" />
-        <h2 className="text-lg font-bold text-slate-600 dark:text-slate-300 mb-2">Not a Class Teacher</h2>
-        <p className="italic text-sm">You haven't been designated as a Class Teacher for any class. An Admin can assign this under Settings &rarr; Grade Levels.</p>
-      </div>
+      <WorkSurface>
+        <PageHeader title="Class Teacher Review" />
+        <EmptyState
+          icon="task_alt"
+          title="You are not a class teacher"
+          body="This screen belongs to whoever is set as class teacher for a class. Ask your administrator if that should be you."
+        />
+      </WorkSurface>
     );
   }
 
-  return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <span className="font-bold text-slate-900 dark:text-white">Teacher Portal</span>
-            <span>/</span>
-            <span className="font-medium text-primary">Class Teacher Review</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Merge &amp; Submit Report Cards</h1>
-          <p className="text-slate-500 text-sm mt-1">Every subject teacher's scores for {activeClass || 'this class'} merge here &mdash; add your remarks and submit for Admin approval.</p>
-        </div>
-        {myClasses.length > 1 && (
-          <select
-            value={activeClass}
-            onChange={(e) => setActiveClass(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-primary"
-          >
-            {myClasses.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-          </select>
-        )}
-      </div>
+  const submitted = mergeStatus?.subjects.filter((s) => s.complete).length ?? 0;
+  const totalSubjects = mergeStatus?.subjects.length ?? 0;
 
-      {/* Merge status banner */}
-      {mergeStatus && (
-        <div className={`p-5 rounded-2xl border ${mergeStatus.allComplete ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/40' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/40'}`}>
-          <div className="flex items-center gap-2 mb-3">
-            <Icon name={mergeStatus.allComplete ? 'check_circle' : 'pending'} className={mergeStatus.allComplete ? 'text-emerald-600' : 'text-amber-600'} />
-            <p className="text-sm font-bold text-slate-900 dark:text-white">
-              {mergeStatus.allComplete ? 'All subjects submitted — ready to finalize.' : 'Waiting on some subject teachers to submit.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {mergeStatus.subjects.map(s => (
-              <span
-                key={s.subject}
-                className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${s.complete ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}
-              >
-                {s.subject}: {s.submittedCount}/{s.totalStudents}
+  return (
+    <WorkSurface>
+      <PageHeader
+        title="Class Teacher Review"
+        subtitle={`${activeClass} · ${currentTerm} — merge every subject, add your remark, then send for approval`}
+        actions={
+          <>
+            {status && (
+              <span className={`text-[11.5px] flex items-center gap-1.5 ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+                <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+                {status.text}
               </span>
-            ))}
-            {mergeStatus.subjects.length === 0 && (
-              <span className="text-xs text-slate-400 italic">No subjects are assigned to teachers for this class yet.</span>
             )}
-          </div>
+            <Button icon="send" loading={finalizing} disabled={!mergeStatus?.allComplete} onClick={handleFinalize}>
+              Finalize &amp; submit
+            </Button>
+          </>
+        }
+      />
+
+      {myClasses.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {myClasses.map((c) => (
+            <Chip key={c.id ?? c.name} active={c.name === activeClass} onClick={() => setActiveClass(c.name)}>
+              {c.name}
+            </Chip>
+          ))}
         </div>
       )}
 
-      {/* Merged table */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800">
-          <h3 className="font-bold text-slate-900 dark:text-white">{activeClass} &middot; {currentTerm}</h3>
-        </div>
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {merged.map(student => {
-            const overall = overallFor(student);
-            return (
-              <div key={student.studentId} className="p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">{student.studentName}</p>
-                  <span className="text-sm font-black text-primary">{overall === null ? 'No submissions yet' : `${overall} avg`}</span>
-                </div>
-                {student.subjects.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic mb-3">No subject scores submitted for this student yet.</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
-                    {student.subjects.map(s => (
-                      <div key={s.subject} className="bg-slate-50 dark:bg-slate-900/40 rounded-lg p-3 border border-slate-100 dark:border-slate-800">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">{s.subject}</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{s.caScore + s.examScore} <span className="text-[10px] text-slate-400 font-normal">(CA {s.caScore} + Exam {s.examScore})</span></p>
-                        {s.remarks && <p className="text-[11px] text-slate-500 italic mt-1">"{s.remarks}"</p>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <input
-                  type="text"
-                  placeholder="Overall class teacher's remark for this student..."
-                  value={remarks[student.studentId] || ''}
-                  onChange={(e) => setRemarks(prev => ({ ...prev, [student.studentId]: e.target.value }))}
-                  className="w-full text-sm p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-primary focus:border-primary"
-                />
-              </div>
-            );
-          })}
-          {merged.length === 0 && (
-            <div className="p-12 text-center text-slate-400 italic">No students found for this class.</div>
-          )}
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <StatTile tint="blue" icon="groups" label="Students" value={mergeStatus?.totalStudents ?? merged.length} />
+        <StatTile
+          tint={mergeStatus?.allComplete ? 'mint' : 'peach'}
+          icon="fact_check"
+          label="Subjects submitted"
+          value={totalSubjects ? `${submitted} / ${totalSubjects}` : '—'}
+        />
+        <StatTile
+          tint="lilac"
+          icon="analytics"
+          label="Class average"
+          value={
+            merged.length
+              ? Math.round(
+                  (merged.reduce((a, s) => a + (overallFor(s) ?? 0), 0) / merged.length) * 10,
+                ) / 10
+              : '—'
+          }
+        />
       </div>
 
-      <div className="flex justify-end">
-        <button
-          onClick={handleFinalize}
-          disabled={finalizing || !mergeStatus?.allComplete}
-          className="px-8 py-3.5 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {finalizing ? <Icon name="sync" className="animate-spin" /> : <Icon name="task_alt" />}
-          {finalizing ? 'Submitting...' : 'Finalize & Submit for Approval'}
-        </button>
-      </div>
-    </div>
+      {mergeStatus && (
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Subject submissions</p>
+            <Badge tone={mergeStatus.allComplete ? 'mint' : 'peach'}>
+              {mergeStatus.allComplete ? 'All in' : `${totalSubjects - submitted} outstanding`}
+            </Badge>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {mergeStatus.subjects.map((s) => (
+              <div key={s.subject} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 text-[11.5px] text-slate-600 dark:text-slate-400 truncate">{s.subject}</span>
+                <ProgressBar
+                  value={s.totalStudents ? (s.submittedCount / s.totalStudents) * 100 : 0}
+                  tone={s.complete ? 'success' : 'warning'}
+                  className="flex-1"
+                />
+                <span className={`w-14 shrink-0 text-right text-[11px] font-semibold ${s.complete ? 'text-ink-mint' : 'text-ink-peach'}`}>
+                  {s.submittedCount}/{s.totalStudents}
+                </span>
+              </div>
+            ))}
+          </div>
+          {!mergeStatus.allComplete && (
+            <InlineNote tone="peach" icon="warning">
+              Finalizing is blocked until every subject teacher has submitted. Chase the subjects still short above.
+            </InlineNote>
+          )}
+        </Card>
+      )}
+
+      {merged.length === 0 ? (
+        <EmptyState
+          icon="fact_check"
+          title="Nothing merged yet"
+          body={`Once subject teachers submit scores for ${activeClass}, each student's subjects merge here for your review.`}
+        />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {merged.map((student) => {
+            const overall = overallFor(student);
+            const band = overall != null ? gradeFor(overall) : null;
+            return (
+              <Card key={student.studentId} className="flex flex-col gap-3.5">
+                <div className="flex items-center gap-3.5">
+                  <Avatar name={student.studentName} size={38} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{student.studentName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {student.subjects.length} subject{student.subjects.length === 1 ? '' : 's'} merged
+                    </p>
+                  </div>
+                  {overall != null && (
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="text-[13px] font-bold text-slate-900 dark:text-white">
+                        {overall}
+                        <span className="text-slate-400 font-medium"> / {SUBJECT_MAX}</span>
+                      </span>
+                      {band && <Badge tone={band.tone}>{band.label}</Badge>}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {student.subjects.map((s) => {
+                    const total = s.caScore + s.examScore;
+                    const b = gradeFor(total);
+                    return (
+                      <span
+                        key={s.subject}
+                        className="text-[10.5px] px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400"
+                      >
+                        {s.subject} <span className="font-semibold text-slate-900 dark:text-white">{total}</span>
+                        {b ? ` · ${b.label}` : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <Input
+                  value={remarks[student.studentId] ?? ''}
+                  onChange={(e) => setRemarks((prev) => ({ ...prev, [student.studentId]: e.target.value }))}
+                  placeholder="Your remark on this student's term — printed on the report card"
+                  aria-label={`Class teacher remark for ${student.studentName}`}
+                />
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <InlineNote icon="lock">
+        Finalizing locks every subject entry for this class and sends the batch to an administrator. Only they can release
+        it to parents, or send it back to you.
+      </InlineNote>
+    </WorkSurface>
   );
 };

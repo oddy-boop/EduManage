@@ -1,0 +1,28 @@
+# Local Postgres for EduManage.
+#   docker compose up -d      start
+#   docker compose down       stop (data kept)
+#   docker compose down -v    stop and DELETE all data
+#
+# Credentials live in server/.env, which is gitignored. Keep them in step:
+# this file reads the same variables so there is one source of truth.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: edumanage-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?set PGPASSWORD in server/.env}
+      POSTGRES_DB: ${PGDATABASE:-edumanage}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - edumanage-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-edumanage}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  edumanage-pgdata:

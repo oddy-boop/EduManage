@@ -99,13 +99,13 @@ async function seed() {
 
     // Seed Fees
     await pool.query(`
-      INSERT INTO fees (id, student_id, parent_id, amount, total_amount, amount_paid, due_date, status, type, term) VALUES
-      ('fee-1-id', 'student-1-id', 'parent-1-uid', 2500.00, 2500.00, 2000.00, NOW() - INTERVAL '60 days', 'pending', 'Tuition Fee', 'Term 1'),
-      ('fee-2-id', 'student-1-id', 'parent-1-uid', 2500.00, 2500.00, 2500.00, NOW() + INTERVAL '30 days', 'paid', 'Tuition Fee', 'Term 2'),
-      ('fee-3-id', 'student-1-id', 'parent-1-uid', 300.00, 300.00, 0.00, NOW() + INTERVAL '7 days', 'pending', 'Lab & Library Levy', 'Term 2'),
-      ('fee-4-id', 'student-2-id', 'parent-1-uid', 1600.00, 1600.00, 1600.00, NOW() - INTERVAL '60 days', 'paid', 'Tuition Fee', 'Term 1'),
-      ('fee-5-id', 'student-2-id', 'parent-1-uid', 1600.00, 1600.00, 800.00, NOW() + INTERVAL '30 days', 'pending', 'Tuition Fee', 'Term 2'),
-      ('fee-6-id', 'student-3-id', 'parent-2-uid', 2500.00, 2500.00, 0.00, NOW() - INTERVAL '5 days', 'overdue', 'Tuition Fee', 'Term 2');
+      INSERT INTO fees (id, student_id, parent_id, total_amount, amount_paid, due_date, status, type, term) VALUES
+      ('fee-1-id', 'student-1-id', 'parent-1-uid', 2500.00, 2000.00, NOW() - INTERVAL '60 days', 'pending', 'Tuition Fee', 'Term 1'),
+      ('fee-2-id', 'student-1-id', 'parent-1-uid', 2500.00, 2500.00, NOW() + INTERVAL '30 days', 'paid', 'Tuition Fee', 'Term 2'),
+      ('fee-3-id', 'student-1-id', 'parent-1-uid', 300.00, 0.00, NOW() + INTERVAL '7 days', 'pending', 'Lab & Library Levy', 'Term 2'),
+      ('fee-4-id', 'student-2-id', 'parent-1-uid', 1600.00, 1600.00, NOW() - INTERVAL '60 days', 'paid', 'Tuition Fee', 'Term 1'),
+      ('fee-5-id', 'student-2-id', 'parent-1-uid', 1600.00, 800.00, NOW() + INTERVAL '30 days', 'pending', 'Tuition Fee', 'Term 2'),
+      ('fee-6-id', 'student-3-id', 'parent-2-uid', 2500.00, 0.00, NOW() - INTERVAL '5 days', 'overdue', 'Tuition Fee', 'Term 2');
     `);
 
     // Seed Events
@@ -126,8 +126,8 @@ async function seed() {
 
     // Seed Assignments
     await pool.query(`
-      INSERT INTO assignments (id, class_id, title, description, due_date) VALUES
-      ('assign-1-id', 'Grade 10', 'Algebraic Formulations Homework', 'Complete problems 1 to 10 on page 42 of the textbook.', NOW() + INTERVAL '7 days');
+      INSERT INTO assignments (id, class_id, title, description, due_date, teacher_id) VALUES
+      ('assign-1-id', 'Grade 10', 'Algebraic Formulations Homework', 'Complete problems 1 to 10 on page 42 of the textbook.', NOW() + INTERVAL '7 days', 'teacher-1-uid');
     `);
 
     // Seed Quizzes

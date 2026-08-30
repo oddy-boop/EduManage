@@ -283,6 +283,99 @@ export const firestoreService = {
     return await response.json();
   },
 
+  /**
+   * Downloads a released report card as a PDF. The endpoint needs the session
+   * token, so this cannot be a plain link — fetch it, then hand the blob to the
+   * browser as a save.
+   */
+  async downloadReportPdf(reportId: string) {
+    const response = await apiFetch(`/api/reports/${encodeURIComponent(reportId)}/pdf`);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || 'Could not download that report.');
+    }
+
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match?.[1] || 'report-card.pdf';
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Give the browser a moment to start the save before revoking.
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  },
+
+  // --- ARREARS ---
+
+  /** Pass dryRun to preview without writing anything. */
+  async carryForwardArrears(toTerm: string, dryRun = false) {
+    const response = await apiFetch('/api/fees/carry-forward', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toTerm, dryRun }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'Failed to carry arrears forward');
+    return body as {
+      toTerm: string;
+      total: number;
+      carriedCount?: number;
+      dryRun?: boolean;
+      students: { studentId: string; studentName: string; owed: number; rows: number }[];
+    };
+  },
+
+  // --- GRADING SCALE ---
+
+  async getGradingScale() {
+    const response = await apiFetch('/api/gradingScale');
+    if (!response.ok) throw new Error('Failed to fetch grading scale');
+    return await response.json();
+  },
+
+  async setGradingScale(scale: { bands: any[]; caMax: number; examMax: number; passMark: number }) {
+    const response = await apiFetch('/api/gradingScale', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scale),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'Failed to save the grading scale');
+    return body;
+  },
+
+  // --- TEACHER ASSIGNMENTS (which subject, in which class) ---
+
+  /** A teacher may read only their own; an admin may pass a teacherId. */
+  async getTeacherAssignments(params: { teacherId?: string; classId?: string } = {}) {
+    const q = new URLSearchParams();
+    if (params.teacherId) q.set('teacherId', params.teacherId);
+    if (params.classId) q.set('classId', params.classId);
+    const response = await apiFetch(`/api/teacherAssignments${q.toString() ? `?${q}` : ''}`);
+    if (!response.ok) throw new Error('Failed to fetch teacher assignments');
+    return (await response.json()) as { teacherId: string; classId: string; courseCode: string; subject: string }[];
+  },
+
+  /** Replaces the teacher's whole set. The server derives assignedClasses from it. */
+  async setTeacherAssignments(teacherId: string, assignments: { classId: string; courseCode: string }[]) {
+    const response = await apiFetch(`/api/teacherAssignments/${encodeURIComponent(teacherId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to save teacher assignments');
+    }
+    return await response.json();
+  },
+
   async getSubjectMergeStatus(classId: string, term: string) {
     const response = await apiFetch(`/api/subjectReports/merge-status?classId=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}`);
     if (!response.ok) throw new Error('Failed to fetch merge status');

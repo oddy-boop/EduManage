@@ -1,142 +1,188 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Badge, Card, ChildSwitcher, Chip, Drawer, EmptyState, InlineNote, NoResults, PageHeader, SkeletonTable,
+} from '../../components/ui';
+
+type Filter = 'all' | 'due' | 'past';
 
 export const ParentAssignments: React.FC = () => {
   const { user } = useAuth();
-  const [activeChild, setActiveChild] = useState<any>(null);
   const [children, setChildren] = useState<any[]>([]);
+  const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
+  const [detail, setDetail] = useState<any>(null);
+  const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
-  const [detailAssignment, setDetailAssignment] = useState<any>(null);
 
   useEffect(() => {
     if (!user?.uid) return;
     const unsub = firestoreService.getStudentsForParent(user.uid, (data) => {
       setChildren(data);
-      if (data.length > 0 && !activeChild) {
-        setActiveChild(data[0]);
-      }
+      setActiveChildId((prev) => prev ?? data[0]?.id ?? null);
       setLoading(false);
     });
     return () => unsub();
-  }, [user, activeChild]);
+  }, [user?.uid]);
+
+  const activeChild = children.find((c) => c.id === activeChildId) ?? null;
 
   useEffect(() => {
-    if (!activeChild?.id) return;
+    if (!activeChild?.classId) return;
     const unsub = firestoreService.getAssignments(activeChild.classId, setAssignments);
     return () => unsub();
-  }, [activeChild]);
+  }, [activeChild?.classId]);
+
+  const now = Date.now();
+  const decorated = useMemo(
+    () =>
+      assignments
+        .map((a) => {
+          const due = a.dueDate ? new Date(a.dueDate) : null;
+          const ms = due ? due.getTime() - now : null;
+          return {
+            ...a,
+            due,
+            overdue: ms !== null && ms < 0,
+            soon: ms !== null && ms >= 0 && ms < 1000 * 60 * 60 * 48,
+          };
+        })
+        .sort((a, b) => (a.due?.getTime() ?? Infinity) - (b.due?.getTime() ?? Infinity)),
+    [assignments, now],
+  );
+
+  const visible = decorated.filter((a) => (filter === 'all' ? true : filter === 'due' ? !a.overdue : a.overdue));
+  const dueCount = decorated.filter((a) => !a.overdue).length;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-56 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={4} />
+      </WorkSurface>
+    );
+  }
+
+  if (children.length === 0) {
+    return (
+      <WorkSurface>
+        <PageHeader title="Assignments" />
+        <EmptyState icon="family_restroom" title="No children linked to your account" body="Contact the school office if one is missing." />
+      </WorkSurface>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
-            <span>Parent Portal</span>
-            <Icon name="chevron_right" className="text-xs" />
-            <span>Assignments</span>
+    <WorkSurface>
+      <PageHeader
+        title="Assignments"
+        subtitle="What has been set, and what is still to come"
+        actions={
+          <div className="flex items-center gap-2">
+            <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+              All ({decorated.length})
+            </Chip>
+            <Chip active={filter === 'due'} onClick={() => setFilter('due')}>
+              Still due ({dueCount})
+            </Chip>
+            <Chip active={filter === 'past'} onClick={() => setFilter('past')}>
+              Past due
+            </Chip>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assignments</h1>
-          <p className="text-slate-500 text-sm mt-1">Track tasks for {activeChild?.name}.</p>
-        </div>
-        
-        {/* Child Selector for Multi-child Parents */}
-        {children.length > 1 && (
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
-             {children.map(child => (
-               <button 
-                 key={child.id}
-                 onClick={() => setActiveChild(child)}
-                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                   activeChild?.id === child.id ? 'bg-white dark:bg-slate-700 shadow-sm text-primary' : 'text-slate-500'
-                 }`}
-               >
-                 {child.name}
-               </button>
-             ))}
-          </div>
-        )}
-      </div>
+        }
+      />
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        {/* Table Header */}
-        <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50 dark:bg-slate-700/30 text-xs font-bold uppercase text-slate-500 border-b border-slate-200 dark:border-slate-700">
-          <div className="col-span-5 md:col-span-4">Subject</div>
-          <div className="hidden md:block col-span-3">Title</div>
-          <div className="col-span-3 md:col-span-2">Due Date</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2 md:col-span-1 text-right">Action</div>
-        </div>
+      <ChildSwitcher children={children} activeId={activeChildId} onSelect={setActiveChildId} />
 
-        {/* Table Body */}
-        <div className="divide-y divide-slate-100 dark:divide-slate-700">
-          {assignments.length > 0 ? assignments.map((item, i) => (
-            <div key={item.id || i} className="grid grid-cols-12 gap-4 px-6 py-5 items-center hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-              <div className="col-span-5 md:col-span-4 flex items-center gap-4">
-                <div className={`size-10 rounded-lg flex items-center justify-center shrink-0 bg-blue-100 text-blue-600 dark:bg-opacity-20`}>
-                  <Icon name="assignment" />
+      {!activeChild?.classId ? (
+        <EmptyState
+          icon="class"
+          title={`${activeChild?.name || 'This child'} is not in a class yet`}
+          body="Assignments are set per class. The school office assigns a class on registration."
+        />
+      ) : decorated.length === 0 ? (
+        <EmptyState
+          icon="assignment"
+          title="Nothing set right now"
+          body={`Work set for ${activeChild.classId} will appear here as soon as a teacher publishes it.`}
+        />
+      ) : visible.length === 0 ? (
+        <NoResults title="Nothing in this filter" body="Try another filter to see the rest." onClear={() => setFilter('all')} />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {visible.map((a) => (
+            <Card
+              key={a.id}
+              className={`flex items-center gap-3.5 p-4 cursor-pointer transition-transform hover:-translate-y-0.5 ${
+                a.overdue ? 'outline outline-[1.5px] -outline-offset-[1.5px] outline-danger' : ''
+              }`}
+              onClick={() => setDetail(a)}
+            >
+              <div
+                className={`size-[42px] rounded-[13px] flex items-center justify-center shrink-0 ${
+                  a.overdue ? 'bg-tint-blush text-ink-blush' : a.soon ? 'bg-tint-butter text-ink-butter' : 'bg-tint-mint text-ink-mint'
+                }`}
+              >
+                <Icon name={a.overdue ? 'schedule' : 'assignment'} className="text-[20px]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <p className="text-[13.5px] font-semibold text-slate-900 dark:text-white">{a.title}</p>
+                  {a.overdue && <Badge tone="blush">Past due</Badge>}
+                  {a.soon && !a.overdue && <Badge tone="butter">Due soon</Badge>}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{item.subject}</p>
-                  <p className="text-xs text-slate-500 truncate">{item.classId}</p>
-                </div>
+                <p className="mt-1 text-[11.5px] text-slate-500 truncate">
+                  {a.subject || a.classId}
+                  {a.due ? ` · due ${a.due.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ' · no due date'}
+                </p>
               </div>
-              <div className="hidden md:block col-span-3 text-sm text-slate-600 dark:text-slate-300">
-                {item.title}
-              </div>
-              <div className="col-span-3 md:col-span-2">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">{item.dueDate ? new Date(item.dueDate).toLocaleDateString() : 'No date'}</p>
-                <p className={`text-[10px] font-bold text-slate-400`}>Official Deadline</p>
-              </div>
-              <div className="col-span-2">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700 dark:bg-opacity-20`}>
-                  ASSIGNED
-                </span>
-              </div>
-              <div className="col-span-2 md:col-span-1 text-right">
-                <button onClick={() => setDetailAssignment(item)} className="text-primary hover:text-blue-700 font-bold text-xs whitespace-nowrap">
-                  View Details
-                </button>
-              </div>
-            </div>
-          )) : (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              No assignments found for this class.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {detailAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDetailAssignment(null)}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-start">
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">{detailAssignment.title}</h3>
-                <p className="text-xs text-slate-500 mt-1">{detailAssignment.subject || detailAssignment.classId}</p>
-              </div>
-              <button onClick={() => setDetailAssignment(null)} className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{detailAssignment.description || 'No further details provided.'}</p>
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                <Icon name="event" className="text-sm" />
-                Due {detailAssignment.dueDate ? new Date(detailAssignment.dueDate).toLocaleDateString() : 'No date'}
-              </div>
-            </div>
-          </div>
+              <Icon name="chevron_right" className="text-[18px] text-slate-300 shrink-0" />
+            </Card>
+          ))}
         </div>
       )}
-    </div>
+
+      <InlineNote icon="info">
+        This is a read-only view of what teachers have set. Work is handed in at school — there is nothing to upload here.
+      </InlineNote>
+
+      <Drawer
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail?.title ?? ''}
+        subtitle={detail ? `${detail.subject || ''}${detail.classId ? ` · ${detail.classId}` : ''}` : undefined}
+      >
+        {detail && (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-2.5">
+              <div className="flex-1 bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">Due</p>
+                <p className="mt-1 text-[12.5px] font-semibold text-slate-900 dark:text-white">
+                  {detail.dueDate ? new Date(detail.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long' }) : 'Not set'}
+                </p>
+              </div>
+              <div className="flex-1 bg-slate-50 dark:bg-slate-900/40 rounded-[13px] px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.07em] text-slate-400">Class</p>
+                <p className="mt-1 text-[12.5px] font-semibold text-slate-900 dark:text-white">{detail.classId || '—'}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-slate-900 dark:text-white mb-2">Instructions</p>
+              <p className="text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-400">
+                {detail.description || 'No further instructions were given.'}
+              </p>
+            </div>
+
+            <InlineNote tone="butter" icon="info">
+              Handed in on paper. You can see what was set, but there is nothing to submit here.
+            </InlineNote>
+          </div>
+        )}
+      </Drawer>
+    </WorkSurface>
   );
 };

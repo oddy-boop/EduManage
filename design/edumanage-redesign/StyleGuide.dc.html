@@ -1,0 +1,232 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #ffffff; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #94a3b8; margin: 0; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; color: #64748b; }
+    .sw { height: 62px; border-radius: 14px; display: flex; align-items: flex-end; padding: 8px 10px; }
+    .cap { font-size: 11.5px; font-weight: 600; color: #0f172a; margin: 7px 0 1px; }
+    .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 22px 24px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 1240px; background: #ffffff; padding: 40px 44px; display: flex; flex-direction: column; gap: 26px; overflow: hidden;">
+
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid #e2e8f0;">
+    <div>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.035em;">EduManage design system</h1>
+      <p style="margin: 6px 0 0; font-size: 13px; color: #64748b; max-width: 620px; line-height: 1.6;">Values below are the ones already in <span class="mono" style="font-size: 11.5px;">index.css</span> unless marked <span style="color: #195de6; font-weight: 600;">new</span>. Everything new is an addition to the existing <span class="mono" style="font-size: 11.5px;">@theme</span> block, not a replacement.</p>
+    </div>
+    <div style="display: flex; gap: 9px;">
+      <span style="font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; padding: 6px 13px; border-radius: 999px;">Tailwind v4</span>
+      <span style="font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; padding: 6px 13px; border-radius: 999px;">Lexend</span>
+      <span style="font-size: 11px; font-weight: 600; color: #195de6; background: #eaf0fe; padding: 6px 13px; border-radius: 999px;">Light + dark</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px;">
+
+    <div style="display: flex; flex-direction: column; gap: 22px;">
+
+      <div class="card">
+        <p class="h2">Core colour</p>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 16px;">
+          <div><div class="sw" style="background: #195de6;"><span style="font-size: 10px; color: rgba(255,255,255,0.8);">AA on white</span></div><p class="cap">Primary</p><p class="mono">--color-primary #195de6</p></div>
+          <div><div class="sw" style="background: #0f172a;"></div><p class="cap">Ink</p><p class="mono">slate-900 #0f172a</p></div>
+          <div><div class="sw" style="background: #64748b;"></div><p class="cap">Ink muted</p><p class="mono">slate-500 #64748b</p></div>
+          <div><div class="sw" style="background: #f8fafc; border: 1px solid #e2e8f0;"></div><p class="cap">Page</p><p class="mono">--color-background-light</p></div>
+          <div><div class="sw" style="background: #ffffff; border: 1px solid #e2e8f0;"></div><p class="cap">Surface</p><p class="mono">--color-surface-light</p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <p class="h2">Pastel card fills</p>
+          <span style="font-size: 9.5px; font-weight: 700; color: #195de6; background: #eaf0fe; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.04em;">NEW</span>
+        </div>
+        <p style="margin: 8px 0 0; font-size: 11.5px; color: #64748b; line-height: 1.6;">Each tint carries its own ink colour. Tints are for grouping and mood only &mdash; never for encoding a value.</p>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 16px;">
+          <div><div class="sw" style="background: #eaf0fe; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #195de6;">Aa</span></div><p class="mono" style="margin-top: 6px;">#eaf0fe</p></div>
+          <div><div class="sw" style="background: #fdf0e6; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #b45309;">Aa</span></div><p class="mono" style="margin-top: 6px;">#fdf0e6</p></div>
+          <div><div class="sw" style="background: #e8f6ee; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #0b7f57;">Aa</span></div><p class="mono" style="margin-top: 6px;">#e8f6ee</p></div>
+          <div><div class="sw" style="background: #fdf6e3; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #a16207;">Aa</span></div><p class="mono" style="margin-top: 6px;">#fdf6e3</p></div>
+          <div><div class="sw" style="background: #fdecef; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #be1e51;">Aa</span></div><p class="mono" style="margin-top: 6px;">#fdecef</p></div>
+          <div><div class="sw" style="background: #f1edfd; height: 54px;"><span style="font-size: 11px; font-weight: 600; color: #7c3aed;">Aa</span></div><p class="mono" style="margin-top: 6px;">#f1edfd</p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="h2">Type ramp &mdash; Lexend</p>
+        <div style="display: flex; flex-direction: column; gap: 13px; margin-top: 16px;">
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">26 / 700 / -0.03em</span><span style="font-size: 26px; font-weight: 700; letter-spacing: -0.03em;">Hi, Sarah</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">15 / 600 / -0.01em</span><span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Section heading</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">13.5 / 600</span><span style="font-size: 13.5px; font-weight: 600;">Card title</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">12.5 / 400</span><span style="font-size: 12.5px; color: #475569;">Body and table text</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">10.5 / 400</span><span style="font-size: 10.5px; color: #64748b;">Secondary metadata</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">10 / 600 / 0.06em</span><span style="font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8;">Table column</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;"><span style="width: 118px; flex-shrink: 0;" class="mono">25 / 700 / -0.03em</span><span style="font-size: 25px; font-weight: 700; letter-spacing: -0.03em;">1,284</span><span style="font-size: 11px; color: #94a3b8;">stat value</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="h2">Radius &amp; elevation</p>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px;">
+          <div style="text-align: center;"><div style="height: 56px; background: #f1f5f9; border-radius: 9px;"></div><p class="cap">9px</p><p class="mono">chips, pagination</p></div>
+          <div style="text-align: center;"><div style="height: 56px; background: #f1f5f9; border-radius: 13px;"></div><p class="cap">13px</p><p class="mono">buttons, inputs</p></div>
+          <div style="text-align: center;"><div style="height: 56px; background: #f1f5f9; border-radius: 18px;"></div><p class="cap">18px</p><p class="mono">stat tiles</p></div>
+          <div style="text-align: center;"><div style="height: 56px; background: #f1f5f9; border-radius: 22px;"></div><p class="cap">20&ndash;22px</p><p class="mono">panels, tables</p></div>
+        </div>
+        <div style="display: flex; gap: 14px; margin-top: 18px;">
+          <div style="flex: 1; height: 58px; background: #ffffff; border-radius: 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); display: flex; align-items: center; justify-content: center;"><span class="mono">card shadow</span></div>
+          <div style="flex: 1; height: 58px; background: #195de6; border-radius: 18px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); display: flex; align-items: center; justify-content: center;"><span class="mono" style="color: rgba(255,255,255,0.85);">primary button glow</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 22px;">
+
+      <div class="card">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <p class="h2">Chart palette &mdash; corrected</p>
+          <span style="font-size: 9.5px; font-weight: 700; color: #be1e51; background: #fdecef; padding: 2px 8px; border-radius: 999px; letter-spacing: 0.04em;">FIX</span>
+        </div>
+        <p style="margin: 8px 0 0; font-size: 11.5px; color: #64748b; line-height: 1.6;">The current <span class="mono" style="font-size: 11.5px;">CLASS_COLORS</span> in <span class="mono" style="font-size: 11.5px;">AdminDashboard.tsx</span> puts <span class="mono" style="font-size: 11.5px;">#8b5cf6</span> next to <span class="mono" style="font-size: 11.5px;">#6366f1</span> &mdash; indistinguishable for protanopia, and hard to separate even with full colour vision. Replace indigo with <span class="mono" style="font-size: 11.5px;">#4a3aa7</span> and use this order.</p>
+        <div style="display: flex; gap: 6px; margin-top: 16px;">
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #195de6;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#195de6</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #f97316;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#f97316</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #10b981;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#10b981</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #8b5cf6;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#8b5cf6</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #f59e0b;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#f59e0b</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #ec4899;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#ec4899</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #06b6d4;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#06b6d4</p></div>
+          <div style="flex: 1;"><div style="height: 44px; border-radius: 10px; background: #4a3aa7;"></div><p class="mono" style="margin-top: 6px; font-size: 9.5px;">#4a3aa7</p></div>
+        </div>
+        <div style="display: flex; gap: 22px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #f1f5f9;">
+          <div style="flex: 1;">
+            <p style="margin: 0 0 8px; font-size: 11px; font-weight: 600; color: #334155;">Status &mdash; reserved, never a series</p>
+            <div style="display: flex; gap: 7px;">
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #10b981;"></span>Good</span>
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #f59e0b;"></span>Warning</span>
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #ef4444;"></span>Critical</span>
+            </div>
+          </div>
+          <div style="flex: 1;">
+            <p style="margin: 0 0 8px; font-size: 11px; font-weight: 600; color: #334155;">Calendar &mdash; already in <span class="mono" style="font-size: 10.5px;">@theme</span></p>
+            <div style="display: flex; gap: 7px;">
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #f59e0b;"></span>Exam</span>
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #10b981;"></span>Event</span>
+              <span style="display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #475569;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #ef4444;"></span>Holiday</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="h2">Controls</p>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px;">
+          <span style="height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7);">Primary</span>
+          <span style="height: 38px; padding: 0 18px; border-radius: 13px; background: #1247b8; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center;">Hover</span>
+          <span style="height: 38px; padding: 0 18px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center;">Secondary</span>
+          <span style="height: 38px; padding: 0 18px; border-radius: 13px; background: #ef4444; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center;">Destructive</span>
+          <span style="height: 38px; padding: 0 18px; border-radius: 13px; background: #f1f5f9; color: #cbd5e1; font-size: 12.5px; font-weight: 600; display: flex; align-items: center;">Disabled</span>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 16px;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 500; color: #334155;">Input &mdash; rest</span>
+            <div style="height: 40px; border-radius: 13px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #94a3b8;">Placeholder</div>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 500; color: #334155;">Input &mdash; focus</span>
+            <div style="height: 40px; border-radius: 13px; border: 1px solid #195de6; box-shadow: 0 0 0 3px rgba(25,93,230,0.12); background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #0f172a;">Typed value</div>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 500; color: #334155;">Input &mdash; error</span>
+            <div style="height: 40px; border-radius: 13px; border: 1px solid #ef4444; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #0f172a;">Required</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 14px; margin-top: 16px; align-items: flex-end;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 500; color: #334155;">Segmented &mdash; attendance</span>
+            <div style="display: flex; gap: 4px; background: #f8fafc; padding: 3px; border-radius: 12px;">
+              <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 7px 0; border-radius: 9px; background: #10b981; color: #ffffff;">Present</span>
+              <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 7px 0; border-radius: 9px; color: #94a3b8;">Late</span>
+              <span style="flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; padding: 7px 0; border-radius: 9px; color: #94a3b8;">Absent</span>
+            </div>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 500; color: #334155;">Status badges</span>
+            <div style="display: flex; gap: 6px;">
+              <span style="font-size: 10.5px; font-weight: 600; color: #0b7f57; background: #e8f6ee; padding: 5px 11px; border-radius: 999px;">Active</span>
+              <span style="font-size: 10.5px; font-weight: 600; color: #b45309; background: #fdf0e6; padding: 5px 11px; border-radius: 999px;">Pending</span>
+              <span style="font-size: 10.5px; font-weight: 600; color: #be1e51; background: #fdecef; padding: 5px 11px; border-radius: 999px;">Overdue</span>
+              <span style="font-size: 10.5px; font-weight: 600; color: #7c3aed; background: #f1edfd; padding: 5px 11px; border-radius: 999px;">Draft</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 22px 24px 16px;">
+          <p class="h2">Rail navigation &mdash; states</p>
+        </div>
+        <div style="display: flex;">
+          <div style="width: 236px; background: #195de6; padding: 16px 14px; display: flex; flex-direction: column; gap: 3px;">
+            <div style="display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; background: #ffffff; color: #195de6; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55);"><svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>Active</div>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; background: rgba(255,255,255,0.14); color: #ffffff;"><svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><path d="M14 3H7.5A2 2 0 0 0 5.5 5v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h4.5"/></svg>Hover</div>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78);"><svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="3.4"/><path d="M3.2 19.6a6.4 6.4 0 0 1 10.6-4.6"/><path d="M15 18.2l2 2 4-4.2"/></svg>Rest</div>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78);"><svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><path d="M18 8.6a6 6 0 1 0-12 0c0 5.9-2.2 7-2.2 7h16.4S18 14.5 18 8.6"/><path d="M10.3 19.4a2.2 2.2 0 0 0 3.4 0"/></svg>With count<span style="margin-left: auto; background: #ffffff; color: #195de6; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px;">4</span></div>
+            <div style="display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); outline: 2px solid #ffffff; outline-offset: 1px;"><svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.6v2.9M12 18.5v2.9M5.1 5.1l2 2M16.9 16.9l2 2M2.6 12h2.9M18.5 12h2.9M5.1 18.9l2-2M16.9 7.1l2-2"/></svg>Keyboard focus</div>
+          </div>
+          <div style="flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 11px; justify-content: center;">
+            <p style="margin: 0; font-size: 11.5px; color: #64748b; line-height: 1.65;">Rail is a fixed <span class="mono" style="font-size: 11px;">256px</span> &mdash; same width the app uses today, so <span class="mono" style="font-size: 11px;">Layouts.tsx</span> changes are colour and state only, not structure.</p>
+            <p style="margin: 0; font-size: 11.5px; color: #64748b; line-height: 1.65;">Below <span class="mono" style="font-size: 11px;">lg</span> the rail keeps its current off-canvas drawer behaviour and overlay.</p>
+            <p style="margin: 0; font-size: 11.5px; color: #64748b; line-height: 1.65;">Focus ring is a white <span class="mono" style="font-size: 11px;">2px</span> outline on blue, and <span class="mono" style="font-size: 11px;">#195de6</span> at 12% on light surfaces.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="h2">Layout &mdash; two shells</p>
+        <div style="display: flex; gap: 14px; margin-top: 16px;">
+          <div style="flex: 1;">
+            <div style="height: 96px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; overflow: hidden;">
+              <div style="width: 30px; background: #195de6;"></div>
+              <div style="flex: 1; padding: 9px; display: flex; flex-direction: column; gap: 5px;"><div style="height: 12px; border-radius: 4px; background: #e2e8f0;"></div><div style="flex: 1; border-radius: 6px; background: #eaf0fe;"></div></div>
+              <div style="width: 46px; background: #ffffff; border-left: 1px solid #e2e8f0; padding: 9px; display: flex; flex-direction: column; gap: 5px;"><div style="height: 18px; border-radius: 999px; background: #f1f5f9;"></div><div style="flex: 1; border-radius: 6px; background: #f8fafc;"></div></div>
+            </div>
+            <p class="cap">Overview shell</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.6;">Rail + content + profile/calendar column. All three dashboards.</p>
+          </div>
+          <div style="flex: 1;">
+            <div style="height: 96px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; display: flex; overflow: hidden;">
+              <div style="width: 30px; background: #195de6;"></div>
+              <div style="flex: 1; padding: 9px; display: flex; flex-direction: column; gap: 5px;"><div style="height: 12px; border-radius: 4px; background: #e2e8f0;"></div><div style="height: 10px; border-radius: 4px; background: #f1f5f9;"></div><div style="flex: 1; border-radius: 6px; background: #ffffff; border: 1px solid #e2e8f0;"></div></div>
+            </div>
+            <p class="cap">Work shell</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.6;">Rail + full-width content. Registers, tables, forms, approvals.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

@@ -1,6 +1,10 @@
 import React from 'react';
 import { Icon } from '../../components/Icon';
 import { View } from '../../types';
+import { WorkSurface } from '../../components/Layouts';
+import { Badge, Button, Card, EmptyState, InlineNote, PageHeader } from '../../components/ui';
+import { firestoreService } from '../../lib/services';
+import { CA_MAX, EXAM_MAX, GRADE_BANDS, SUBJECT_MAX, gradeFor } from '../../lib/grading';
 
 interface ParentReportDetailProps {
   onNavigate: (view: View) => void;
@@ -8,253 +12,287 @@ interface ParentReportDetailProps {
   child?: any;
 }
 
+const PRINT_CSS = `
+@media print {
+  body * { visibility: hidden; }
+  #printable-report, #printable-report * { visibility: visible; }
+  #printable-report {
+    position: absolute; left: 0; top: 0; width: 100%;
+    padding: 0 !important; box-shadow: none !important; border: none !important;
+    background: white !important; color: black !important;
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
+  }
+  @page { margin: 14mm; }
+}`;
+
+/** A row of the subject table, whichever shape the API produced. */
+interface Row {
+  label: string;
+  ca: number | null;
+  exam: number | null;
+  total: number | null;
+  remark: string;
+}
+
 export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNavigate, report, child }) => {
-  const handlePrint = () => {
-    window.print();
+  const [school, setSchool] = React.useState<Record<string, string>>({});
+  const [downloading, setDownloading] = React.useState(false);
+  const [downloadError, setDownloadError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    firestoreService.getSystemSettings().then(setSchool).catch(() => setSchool({}));
+  }, []);
+
+  const download = async () => {
+    if (!report?.id) return;
+    setDownloadError(null);
+    setDownloading(true);
+    try {
+      await firestoreService.downloadReportPdf(report.id);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Could not download that report.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (!report || !child) {
     return (
-      <div className="p-6 lg:p-8 max-w-3xl mx-auto text-center py-24">
-        <Icon name="description" className="text-6xl text-slate-200 dark:text-slate-700 mb-4 mx-auto" />
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Report Selected</h1>
-        <p className="text-slate-500 text-sm mb-8">Select a report card from the Reports page to view its details.</p>
-        <button
-          onClick={() => onNavigate(View.PARENT_REPORTS)}
-          className="px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
-        >
-          Back to Reports
-        </button>
-      </div>
+      <WorkSurface>
+        <PageHeader title="Report card" />
+        <EmptyState
+          icon="description"
+          title="No report selected"
+          body="Pick a released report card from the Reports list to view it."
+          action={<Button onClick={() => onNavigate(View.PARENT_REPORTS)}>Back to reports</Button>}
+        />
+      </WorkSurface>
     );
   }
 
   const studentName = child.name || 'Student';
-  const studentId = child.id || child.loginId || 'N/A';
+  const studentId = child.id || child.loginId || '—';
   const studentClass = child.classId || 'Unassigned';
-
   const termName = report.term || 'Current Term';
-  const totalScore = report.totalScore ?? null;
-  const letterGrade = report.grade || '—';
-  const reportStatus = report.status || 'pending';
-  const teacherComments = report.comments || 'No comments provided by the instructor.';
+  const session = report.session || '';
+  const totalScore: number | null = report.totalScore ?? null;
+  const comments = report.comments || 'No comments were recorded for this report.';
+  const overallBand = totalScore != null ? gradeFor(totalScore) : null;
 
-  // report.grades may be keyed by subject ({ Mathematics: { score, grade, remarks } }) or by
-  // assessment component ({ ca: 38, exam: 54 }), depending on which teacher workflow produced it.
-  // Render whatever shape is actually present rather than assuming one.
-  const gradeEntries = Object.entries(report.grades || {}) as [string, any][];
+  /**
+   * report.grades comes in two shapes depending on which teacher workflow wrote it:
+   *   subject-keyed    { Mathematics: { ca, exam, score, grade, remarks } }
+   *   component-keyed  { ca: 38, exam: 54 }
+   * Render whatever is actually present rather than assuming one.
+   */
+  const raw = Object.entries(report.grades || {}) as [string, any][];
+  const componentKeyed = raw.length > 0 && raw.every(([, v]) => typeof v === 'number');
+
+  const rows: Row[] = componentKeyed
+    ? [
+        {
+          label: report.subject || 'Overall',
+          ca: Number(report.grades.ca ?? 0),
+          exam: Number(report.grades.exam ?? 0),
+          total: Number(report.grades.ca ?? 0) + Number(report.grades.exam ?? 0),
+          remark: report.remarks || '',
+        },
+      ]
+    : raw.map(([subject, v]) => {
+        const ca = v?.ca != null ? Number(v.ca) : null;
+        const exam = v?.exam != null ? Number(v.exam) : null;
+        const total = v?.score != null ? Number(v.score) : ca != null && exam != null ? ca + exam : null;
+        return { label: subject, ca, exam, total, remark: v?.remarks || '' };
+      });
+
+  const printed = rows.filter((r) => r.total != null);
+  const average = printed.length ? printed.reduce((a, r) => a + (r.total ?? 0), 0) / printed.length : totalScore;
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Self-contained Print Stylesheet */}
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media print {
-          /* Hide sidebar, navigation and utility controls */
-          body * {
-            visibility: hidden;
-          }
-          /* Show and format only the printable card container */
-          #printable-report, #printable-report * {
-            visibility: visible;
-          }
-          #printable-report {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            padding: 0px !important;
-            box-shadow: none !important;
-            border: none !important;
-            background: white !important;
-            color: black !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          .no-print {
-            display: none !important;
-          }
+    <WorkSurface>
+      <style dangerouslySetInnerHTML={{ __html: PRINT_CSS }} />
+
+      <PageHeader
+        breadcrumb={
+          <button
+            onClick={() => onNavigate(View.PARENT_REPORTS)}
+            className="flex items-center gap-1.5 text-[11.5px] font-medium text-slate-500 hover:text-primary w-fit"
+          >
+            <Icon name="arrow_back" className="text-[14px]" />
+            All reports
+          </button>
         }
-      `}} />
+        title="Report card"
+        subtitle={`${studentName} · ${termName}${session ? ` · ${session}` : ''}`}
+        actions={
+          <>
+            <Button variant="secondary" icon="print" onClick={() => window.print()}>
+              Print
+            </Button>
+            <Button icon="file_download" loading={downloading} onClick={download}>
+              Download PDF
+            </Button>
+          </>
+        }
+      />
 
-      <button 
-        onClick={() => onNavigate(View.PARENT_REPORTS)}
-        className="flex items-center gap-1 text-sm font-bold text-primary hover:underline mb-2 no-print"
-      >
-        <Icon name="arrow_back" className="text-sm" /> Back to Reports
-      </button>
+      {downloadError && <InlineNote tone="blush" icon="priority_high">{downloadError}</InlineNote>}
 
-      {/* Main Container */}
-      <div id="printable-report" className="space-y-6 bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-        
-        {/* Printable-only Official School Letterhead */}
-        <div className="hidden print:flex flex-col items-center text-center pb-6 border-b-2 border-double border-slate-300 mb-6">
-          <div className="size-16 bg-primary text-white rounded-full flex items-center justify-center mb-3">
-            <Icon name="school" className="text-3xl" />
+      <Card id="printable-report" className="p-6 md:p-10 max-w-[900px]">
+        {/* Masthead */}
+        <div className="flex items-center gap-4 pb-4 border-b-[3px] border-primary">
+          <div className="size-14 rounded-[15px] bg-primary text-white flex items-center justify-center shrink-0">
+            <Icon name="school" className="text-[32px]" />
           </div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">EDUMANAGE ACADEMY</h2>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Office of the Principal • Terminal Assessment Report</p>
-        </div>
-        
-        {/* Header Block */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block px-2.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold uppercase">Official Transcript</span>
-              <span className="inline-block px-2.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-bold uppercase">{reportStatus}</span>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">Academic Progress Report</h1>
-            <p className="text-slate-500 text-sm mt-1 font-semibold">{termName}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-[22px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+              {school.school_name?.trim() || 'Your school'}
+            </p>
+            {/* Only configured details are printed. An unset field shows nothing
+                rather than a bracketed placeholder on a document parents keep. */}
+            {[school.school_address, school.school_phone, school.school_email].some((v) => v?.trim()) && (
+              <p className="mt-0.5 text-[13px] text-slate-500">
+                {[school.school_address, school.school_phone, school.school_email]
+                  .map((v) => v?.trim())
+                  .filter(Boolean)
+                  .join('  ·  ')}
+              </p>
+            )}
           </div>
-          <div className="flex gap-3 no-print">
-            <button 
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
-            >
-              <Icon name="print" /> Print
-            </button>
-            <button 
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors"
-            >
-              <Icon name="download" /> Save PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Student Profile Block */}
-        <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Student Name</p>
-            <p className="text-base font-bold text-slate-900 dark:text-white">{studentName}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Student Access ID</p>
-            <p className="text-base font-mono font-bold text-slate-700 dark:text-slate-300">{studentId}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Assigned Class / Grade</p>
-            <p className="text-base font-bold text-slate-900 dark:text-white">{studentClass}</p>
+          <div className="text-right shrink-0">
+            <p className="text-[15px] font-bold text-primary tracking-[0.02em]">TERMINAL REPORT</p>
+            <p className="mt-0.5 text-[13px] text-slate-500">
+              {termName}
+              {session ? ` · ${session}` : ''}
+            </p>
           </div>
         </div>
 
-        {/* Aggregate Summary Block */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
-            <div className="size-12 rounded-full bg-blue-50 dark:bg-blue-900/20 text-primary flex items-center justify-center">
-              <Icon name="trending_up" className="text-2xl" />
+        {/* Student block */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-slate-900/40 rounded-[14px] p-4 md:p-5 mt-5">
+          {[
+            ['Student', studentName],
+            ['Class', studentClass],
+            ['Student ID', studentId],
+            ['Overall average', average != null ? `${Math.round(average)}%` : '—'],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <p className="text-xs font-semibold uppercase tracking-[0.07em] text-slate-400">{label}</p>
+              <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">{value}</p>
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase text-slate-500">Term Cumulative Score</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{totalScore ?? 'N/A'} <span className="text-sm font-medium text-slate-400">/ 100</span></p>
-            </div>
-          </div>
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
-            <div className="size-12 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 flex items-center justify-center">
-              <Icon name="emoji_events" className="text-2xl" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase text-slate-500">Assigned Letter Grade</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{letterGrade}</p>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Detailed Assessment Ledger */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/10">
-            <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-xs">Terminal Grade Ledger</h3>
-          </div>
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500">
-              <tr>
-                <th className="px-6 py-4">Component / Subject</th>
-                <th className="px-6 py-4 text-center">Score</th>
-                <th className="px-6 py-4 text-center">Grade</th>
-                <th className="px-6 py-4">Remarks</th>
+        {/* Subjects */}
+        <div className="mt-5 rounded-xl overflow-hidden">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-primary text-white">
+                <th className="text-left text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3">Subject</th>
+                <th className="text-right text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3 w-20">CA {CA_MAX}</th>
+                <th className="text-right text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3 w-20">Exam {EXAM_MAX}</th>
+                <th className="text-right text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3 w-16">Total</th>
+                <th className="text-center text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3 w-20">Grade</th>
+                <th className="text-left text-xs font-semibold uppercase tracking-[0.05em] px-3 py-3">Remark</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-              {gradeEntries.length === 0 && (
+            <tbody>
+              {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No component-level scores were recorded for this report.</td>
+                  <td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-400 italic border-b border-slate-200 dark:border-slate-700">
+                    No subject scores were recorded for this report.
+                  </td>
                 </tr>
+              ) : (
+                rows.map((r, i) => {
+                  const band = r.total != null ? gradeFor(r.total) : null;
+                  return (
+                    <tr key={r.label} className={i % 2 ? 'bg-slate-50 dark:bg-slate-900/40' : ''}>
+                      <td className="px-3 py-2.5 text-[15px] font-semibold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
+                        {r.label}
+                      </td>
+                      <td className="px-3 py-2.5 text-[15px] text-right text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                        {r.ca ?? '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-[15px] text-right text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                        {r.exam ?? '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-[15px] text-right font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
+                        {r.total ?? '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-center border-b border-slate-200 dark:border-slate-700">
+                        {band ? <Badge tone={band.tone}>{band.label}</Badge> : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                        {r.remark || '—'}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
-              {gradeEntries.map(([key, value]) => {
-                const isDetailed = value && typeof value === 'object';
-                const score = isDetailed ? value.score : value;
-                const grade = isDetailed ? value.grade : null;
-                const remarks = isDetailed ? value.remarks : null;
-                return (
-                  <tr key={key} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center">
-                          <Icon name="assignment" />
-                        </div>
-                        <span className="font-bold text-slate-900 dark:text-white capitalize">{key}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-center font-bold text-slate-900 dark:text-white">{score ?? 'N/A'}</td>
-                    <td className="px-6 py-4 text-center font-medium text-slate-500">{grade || '—'}</td>
-                    <td className="px-6 py-4 text-xs text-slate-500 italic">{remarks || '—'}</td>
-                  </tr>
-                );
-              })}
             </tbody>
-            <tfoot className="bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700 font-bold">
-              <tr>
-                <td className="px-6 py-4 text-slate-900 dark:text-white">Cumulative Term Performance</td>
-                <td className="px-6 py-4 text-center text-primary text-base font-black">{totalScore ?? 'N/A'}</td>
-                <td className="px-6 py-4 text-center" colSpan={2}>
-                  <span className="inline-block px-2.5 py-0.5 rounded bg-primary text-white text-xs font-black uppercase">Grade: {letterGrade}</span>
-                </td>
-              </tr>
-            </tfoot>
           </table>
         </div>
 
-        {/* Remarks Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Icon name="format_quote" className="text-primary text-lg" />
-              <h3 className="font-bold text-slate-900 dark:text-white">Class Instructor's Remarks</h3>
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300 italic leading-relaxed bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-              "{teacherComments}"
+        {/* Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+          <div className="bg-tint-blue rounded-xl px-4 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-blue">Subjects</p>
+            <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">{printed.length}</p>
+          </div>
+          <div className="bg-tint-mint rounded-xl px-4 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-mint">Average</p>
+            <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+              {average != null ? `${Math.round(average)}%` : '—'}
             </p>
           </div>
-
-          {/* Grading Key */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Icon name="info" className="text-slate-400" />
-              <h3 className="font-bold text-slate-900 dark:text-white">JHS Grading Scheme</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>A+</span> <span className="text-slate-500">90-100 (Highest)</span></div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>C</span> <span className="text-slate-500">60-69 (Pass)</span></div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>A</span> <span className="text-slate-500">80-89 (Excellent)</span></div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>D</span> <span className="text-slate-500">50-59 (Weak)</span></div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>B</span> <span className="text-slate-500">70-79 (Very Good)</span></div>
-              <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-700"><span>F</span> <span className="text-slate-500">Below 50 (Fail)</span></div>
-            </div>
+          <div className="bg-tint-butter rounded-xl px-4 py-3.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.07em] text-ink-butter">Overall grade</p>
+            <p className="mt-1 text-2xl font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+              {overallBand?.label ?? report.grade ?? '—'}
+            </p>
           </div>
         </div>
 
-        {/* Printable-only Signature Lines */}
-        <div className="hidden print:grid grid-cols-2 gap-12 pt-16 mt-8 border-t border-dashed border-slate-300 text-xs">
-          <div className="text-center">
-            <div className="border-b border-slate-400 h-8 w-48 mx-auto mb-2"></div>
-            <p className="font-bold text-slate-700 uppercase">Class Instructor Signature</p>
+        {/* Grading key — reads from the shared scale, so entry and card agree. */}
+        <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 mt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.07em] text-slate-400 mb-2">Grading key</p>
+          <div className="flex flex-wrap gap-4">
+            {GRADE_BANDS.map((b) => (
+              <span key={b.label} className="text-[13px] text-slate-600 dark:text-slate-400">
+                <span className={`font-bold ${b.tone === 'mint' ? 'text-ink-mint' : b.tone === 'blue' ? 'text-ink-blue' : b.tone === 'butter' ? 'text-ink-butter' : 'text-ink-blush'}`}>
+                  {b.label}
+                </span>{' '}
+                {b.minScore}–{b.maxScore} {b.description}
+              </span>
+            ))}
           </div>
-          <div className="text-center">
-            <div className="border-b border-slate-400 h-8 w-48 mx-auto mb-2"></div>
-            <p className="font-bold text-slate-700 uppercase">Headteacher / Supervisor Signature</p>
-          </div>
+          <p className="mt-2.5 text-[11px] text-slate-400">Subject totals are out of {SUBJECT_MAX}.</p>
         </div>
 
-      </div>
-    </div>
+        {/* Remarks */}
+        <div className="mt-5 border-l-[3px] border-primary pl-3.5 py-0.5">
+          <p className="text-xs font-semibold uppercase tracking-[0.07em] text-slate-400">Class teacher&rsquo;s remark</p>
+          <p className="mt-1.5 text-base leading-relaxed text-slate-800 dark:text-slate-200">{comments}</p>
+        </div>
+
+        {/* Signatures */}
+        <div className="flex flex-col sm:flex-row gap-6 mt-8">
+          {['Class teacher', 'Head teacher', 'Parent / guardian'].map((l) => (
+            <div key={l} className="flex-1">
+              <div className="h-8 border-b border-slate-400" />
+              <p className="mt-1.5 text-[13px] text-slate-500">{l}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 mt-5 border-t border-slate-200 dark:border-slate-700">
+          <p className="text-xs text-slate-500">
+            Status: <span className="font-semibold text-slate-700 dark:text-slate-300">{report.status || 'pending'}</span>
+          </p>
+          <p className="text-xs text-slate-400">Approved and released via EduManage · ref {report.id}</p>
+        </div>
+      </Card>
+    </WorkSurface>
   );
 };

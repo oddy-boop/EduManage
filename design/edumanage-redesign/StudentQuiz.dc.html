@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; -webkit-font-smoothing: antialiased; }
+    a { color: #195de6; text-decoration: none; }
+    a:hover { color: #1247b8; }
+    .navi { display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.78); letter-spacing: -0.005em; }
+    .navi svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .navi.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 6px 16px -8px rgba(6,26,72,0.55); }
+    .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .th { font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase; }
+    .av { width: 34px; height: 34px; border-radius: 999px; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .btn-p { height: 38px; padding: 0 18px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; box-shadow: 0 8px 20px -8px rgba(25,93,230,0.7); }
+    .btn-s { height: 38px; padding: 0 16px; border-radius: 13px; background: #ffffff; border: 1px solid #e2e8f0; color: #334155; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .chip { font-size: 12px; font-weight: 500; color: #475569; background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 15px; border-radius: 10px; }
+    .chip.on { background: #195de6; border-color: #195de6; color: #ffffff; font-weight: 600; }
+    .badge { font-size: 10.5px; font-weight: 600; padding: 4px 11px; border-radius: 999px; }
+    .inp { height: 40px; border-radius: 12px; border: 1px solid #e2e8f0; background: #ffffff; display: flex; align-items: center; padding: 0 14px; font-size: 12.5px; color: #0f172a; }
+    .lab { font-size: 11.5px; font-weight: 500; color: #334155; }
+    .card { background: #ffffff; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 26px -18px rgba(15,23,42,0.25); }
+    .tab { font-size: 12.5px; font-weight: 500; color: #64748b; padding: 9px 16px; border-radius: 11px; }
+    .tab.on { background: #ffffff; color: #195de6; font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,0.08); }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #f8fafc; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="background: #ffffff; border-bottom: 1px solid #eef2f7; padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="flex: 1; min-width: 0;">
+        <p style="margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Linear equations check</p>
+        <p style="margin: 2px 0 0; font-size: 11px; color: #64748b;">Adjoa Mensah &bull; STU-2041</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 7px; background: #fdf6e3; padding: 8px 13px; border-radius: 999px; flex-shrink: 0;">
+        <svg class="ico" style="width: 15px; height: 15px; color: #a16207;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.2v5.1l3.2 1.9"/></svg>
+        <span style="font-size: 13px; font-weight: 700; color: #a16207; letter-spacing: -0.01em;">09:42</span>
+      </div>
+    </div>
+    <div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+        <span style="font-size: 11px; color: #64748b;">Question <span style="font-weight: 700; color: #0f172a;">2</span> of 6</span>
+        <span style="font-size: 11px; color: #64748b;">4 answered</span>
+      </div>
+      <div style="display: flex; gap: 3px; height: 5px;">
+        <span style="flex: 1; background: #195de6; border-radius: 999px;"></span>
+        <span style="flex: 1; background: #195de6; border-radius: 999px;"></span>
+        <span style="flex: 1; background: #cbd5e1; border-radius: 999px;"></span>
+        <span style="flex: 1; background: #195de6; border-radius: 999px;"></span>
+        <span style="flex: 1; background: #195de6; border-radius: 999px;"></span>
+        <span style="flex: 1; background: #e2e8f0; border-radius: 999px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; padding: 18px 16px 0; display: flex; flex-direction: column; gap: 14px;">
+
+    <div style="display: flex; align-items: flex-start; gap: 12px;">
+      <p style="margin: 0; flex: 1; font-size: 17px; font-weight: 600; line-height: 1.45; letter-spacing: -0.015em; text-wrap: pretty;">Which of these is a linear equation?</p>
+      <span style="width: 44px; height: 44px; margin: -8px -10px 0 0; display: flex; align-items: center; justify-content: center; color: #94a3b8; flex-shrink: 0;"><svg class="ico" style="width: 20px; height: 20px;" viewBox="0 0 24 24"><path d="M6 3.5v17"/><path d="M6 4.5h11l-2.2 3.6L17 11.7H6z"/></svg></span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 13px; min-height: 56px; border-radius: 16px; border: 1.5px solid #e2e8f0; background: #ffffff; padding: 12px 15px;">
+        <span style="width: 26px; height: 26px; border-radius: 999px; border: 2px solid #cbd5e1; color: #94a3b8; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">A</span>
+        <span style="font-size: 14.5px; color: #1e293b;">x&sup2; + 3 = 12</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 13px; min-height: 56px; border-radius: 16px; border: 2px solid #195de6; background: #eaf0fe; padding: 12px 15px; box-shadow: 0 8px 20px -12px rgba(25,93,230,0.6);">
+        <span style="width: 26px; height: 26px; border-radius: 999px; background: #195de6; color: #ffffff; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">B</span>
+        <span style="font-size: 14.5px; color: #0f172a; font-weight: 600; flex: 1;">4x &minus; 9 = 7</span>
+        <svg class="ico" style="width: 19px; height: 19px; color: #195de6; flex-shrink: 0;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M8.4 12.4l2.5 2.5 4.6-5.1"/></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 13px; min-height: 56px; border-radius: 16px; border: 1.5px solid #e2e8f0; background: #ffffff; padding: 12px 15px;">
+        <span style="width: 26px; height: 26px; border-radius: 999px; border: 2px solid #cbd5e1; color: #94a3b8; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">C</span>
+        <span style="font-size: 14.5px; color: #1e293b;">1/x = 5</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 13px; min-height: 56px; border-radius: 16px; border: 1.5px solid #e2e8f0; background: #ffffff; padding: 12px 15px;">
+        <span style="width: 26px; height: 26px; border-radius: 999px; border: 2px solid #cbd5e1; color: #94a3b8; font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">D</span>
+        <span style="font-size: 14.5px; color: #1e293b;">&radic;x + 2 = 6</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 4px;">
+      <p style="margin: 0 0 8px; font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: 0.06em; text-transform: uppercase;">Jump to</p>
+      <div style="display: flex; gap: 8px;">
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #dbe6fd; color: #195de6; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">1</span>
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #195de6; color: #ffffff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center;">2</span>
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #ffffff; border: 1.5px solid #e2e8f0; color: #94a3b8; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">3</span>
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #fdf6e3; border: 1.5px solid #d9a441; color: #a16207; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; position: relative;">4<span style="position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 999px; background: #d9a441; display: flex; align-items: center; justify-content: center;"><svg class="ico" style="width: 9px; height: 9px; color: #ffffff; stroke-width: 2.4;" viewBox="0 0 24 24"><path d="M6 3.5v17"/><path d="M6 4.5h11l-2.2 3.6L17 11.7H6z"/></svg></span></span>
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #dbe6fd; color: #195de6; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">5</span>
+        <span style="width: 44px; height: 44px; border-radius: 13px; background: #ffffff; border: 1.5px solid #e2e8f0; color: #94a3b8; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;">6</span>
+      </div>
+      <div style="display: flex; gap: 14px; margin-top: 10px;">
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #dbe6fd;"></span>Answered</span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #fdf6e3; border: 1px solid #d9a441;"></span>Flagged</span>
+        <span style="display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b;"><span style="width: 9px; height: 9px; border-radius: 3px; background: #ffffff; border: 1px solid #e2e8f0;"></span>Not answered</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: #ffffff; border-top: 1px solid #eef2f7; padding: 12px 16px 16px; display: flex; gap: 10px;">
+    <div style="width: 52px; height: 50px; border-radius: 14px; border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; color: #64748b; flex-shrink: 0;"><svg class="ico" style="width: 20px; height: 20px;" viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg></div>
+    <div style="flex: 1; height: 50px; border-radius: 14px; background: #195de6; color: #ffffff; font-size: 14.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 12px 26px -10px rgba(25,93,230,0.75);">
+      Next question<svg class="ico" style="width: 18px; height: 18px;" viewBox="0 0 24 24"><path d="M5 12h13"/><path d="M13 6.5l5.5 5.5L13 17.5"/></svg>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

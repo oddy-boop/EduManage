@@ -1,353 +1,243 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { Icon } from '../../components/Icon';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
-  LineChart, Line, CartesianGrid, Legend 
-} from 'recharts';
 import { firestoreService } from '../../lib/services';
+import { useAuth } from '../../lib/AuthContext';
 import { View } from '../../types';
+import { Overview, ProfileCard, MiniCalendar, type CalendarEvent } from '../../components/Layouts';
+import { Avatar, Badge, Button, Card, EmptyState, Greeting, SectionHeading, SkeletonTable, StatTile } from '../../components/ui';
 
-// Palette of colors for class lines
-const CLASS_COLORS = [
-  '#195de6', // Primary Blue
-  '#f97316', // Orange
-  '#10b981', // Emerald
-  '#6366f1', // Indigo
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#f59e0b', // Amber
-];
+/**
+ * Chart series colours — the corrected order from the design system.
+ * `#6366f1` was removed: beside `#8b5cf6` it measured ΔE 0.8 under protanopia,
+ * i.e. two class lines that some readers simply cannot tell apart.
+ * Recharts needs literal hex, so these are not read from CSS custom properties.
+ */
+const SERIES = ['#195de6', '#f97316', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#4a3aa7'];
+
+const money = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : n.toFixed(0);
 
 export const AdminDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({ onNavigate }) => {
+  const { user } = useAuth();
   const [stats, setStats] = useState({ studentsCount: 0, teachersCount: 0 });
-  const [finance, setFinance] = useState({ totalCollected: 0, chartData: [] as any[] });
+  const [finance, setFinance] = useState({ totalCollected: 0, chartData: [] as { name: string; amount: number }[] });
   const [attendanceRate, setAttendanceRate] = useState(0);
-  const [distribution, setDistribution] = useState<any[]>([]);
+  const [distribution, setDistribution] = useState<{ grade: string; count: number }[]>([]);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
-  const [allStudents, setAllStudents] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(true);
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchBasicStats = async () => {
-      const s = await firestoreService.getGlobalStats();
-      setStats(s);
-    };
-    fetchBasicStats();
+    firestoreService.getGlobalStats().then(setStats).catch(() => {});
 
     const unsubFees = firestoreService.getAllFees((data) => {
-        const total = data.reduce((acc, curr) => acc + (parseFloat(curr.amountPaid) || 0), 0);
-        
-        // Group by month for chart
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const currentYear = new Date().getFullYear();
-        const monthlyData = months.map(m => ({ name: m, amount: 0 }));
-        
-        data.forEach(f => {
-            const date = f.updatedAt ? new Date(f.updatedAt) : (f.createdAt ? new Date(f.createdAt) : new Date());
-            if (date.getFullYear() === currentYear) {
-                monthlyData[date.getMonth()].amount += (parseFloat(f.amountPaid) || 0);
-            }
-        });
-
-        setFinance({ totalCollected: total, chartData: monthlyData.slice(0, new Date().getMonth() + 1) });
+      const total = data.reduce((acc, curr) => acc + (parseFloat(curr.amountPaid) || 0), 0);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const currentYear = new Date().getFullYear();
+      const monthly = months.map((m) => ({ name: m, amount: 0 }));
+      data.forEach((f) => {
+        const date = f.updatedAt ? new Date(f.updatedAt) : f.createdAt ? new Date(f.createdAt) : new Date();
+        if (date.getFullYear() === currentYear) monthly[date.getMonth()].amount += parseFloat(f.amountPaid) || 0;
+      });
+      setFinance({ totalCollected: total, chartData: monthly.slice(0, new Date().getMonth() + 1) });
     });
 
     const unsubAttendance = firestoreService.getAllAttendance((data) => {
-        if (data.length === 0) {
-            setAttendanceRate(0);
-            return;
-        }
-        const present = data.filter(a => a.status === 'present').length;
-        setAttendanceRate(Math.round((present / data.length) * 100));
+      if (!data.length) return setAttendanceRate(0);
+      setAttendanceRate(Math.round((data.filter((a) => a.status === 'present').length / data.length) * 100));
     });
 
-    const unsubDist = firestoreService.getDistribution(setDistribution);
+    const unsubDist = firestoreService.getDistribution((d) => setDistribution(d as any));
+
     const unsubStudents = firestoreService.getStudents((data) => {
-      setAllStudents(data);
-      const sorted = [...data].sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 4);
-      setRecentActivities(sorted.map(s => ({
-        name: s.name,
-        action: 'Registered as new student',
-        date: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'Today',
-        status: 'Active',
-        statusColor: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        img: `https://picsum.photos/seed/${s.id}/100`
-      })));
-      setLoadingActivities(false);
+      const sorted = [...data]
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 5);
+      setRecentActivities(
+        sorted.map((s) => ({
+          id: s.id,
+          name: s.name,
+          detail: s.classId || s.grade || 'Unassigned',
+          kind: 'Student',
+          date: s.createdAt ? new Date(s.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : 'Today',
+        })),
+      );
+      setLoading(false);
     });
 
-    const unsubTeachers = firestoreService.getTeachers((teachers) => {
-        setRecentActivities(prev => {
-            const existingStudents = prev.filter(a => a.type === 'Student');
-            const newTeachers = teachers.sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 2).map(t => ({
-                name: t.name,
-                action: 'Joined as Instructor',
-                date: t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'New',
-                status: 'Active',
-                type: 'Teacher',
-                statusColor: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
-                img: `https://picsum.photos/seed/${t.id}/100`
-            }));
-            return [...existingStudents, ...newTeachers].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        });
-    });
-
-    const unsubReports = firestoreService.getAllReports((data) => {
-        setReports(data);
-    });
+    const unsubReports = firestoreService.getAllReports(setReports);
+    const unsubEvents = firestoreService.getAllEvents(setEvents);
 
     return () => {
       unsubFees();
       unsubAttendance();
       unsubDist();
       unsubStudents();
-      unsubTeachers();
       unsubReports();
+      unsubEvents();
     };
   }, []);
 
-  // Process Report Cards to calculate class averages per term and overall
-  const performanceStats = useMemo(() => {
-    const reportsWithAverages = reports.map(r => {
-      const gradesObj = typeof r.grades === 'object' ? r.grades : {};
-      const subjectNames = Object.keys(gradesObj);
-      let sum = 0;
-      let count = 0;
-      subjectNames.forEach(sub => {
-        const score = parseFloat(gradesObj[sub]?.score);
-        if (!isNaN(score)) {
-          sum += score;
-          count++;
-        }
-      });
-      const average = count > 0 ? sum / count : 0;
-      return {
-        ...r,
-        average
-      };
-    }).filter(r => r.average > 0 && r.classId);
+  const pendingApprovals = useMemo(() => reports.filter((r) => r.status === 'pending').length, [reports]);
+  const firstName = (user?.name || 'there').split(' ')[0];
+  const maxCount = Math.max(1, ...distribution.map((d) => d.count));
 
-    // Group Class Averages by Term (Line Chart 1)
-    const termsList = Array.from(new Set(reportsWithAverages.map(r => (r.term as string) || 'Term 2'))).sort() as string[];
-    const classesList = Array.from(new Set(reportsWithAverages.map(r => r.classId as string))).sort() as string[];
+  const calendarEvents: CalendarEvent[] = events
+    .filter((e) => e?.date)
+    .map((e) => ({ date: e.date, type: (e.type as CalendarEvent['type']) || 'event' }));
 
-    const termChartData = termsList.map(term => {
-      const row: any = { name: term };
-      classesList.forEach(cls => {
-        const classTermReports = reportsWithAverages.filter(r => r.term === term && r.classId === cls);
-        if (classTermReports.length > 0) {
-          const avgSum = classTermReports.reduce((sum, r) => sum + r.average, 0);
-          row[cls] = Math.round((avgSum / classTermReports.length) * 10) / 10;
-        }
-      });
-      return row;
-    });
+  const aside = (
+    <>
+      <ProfileCard name={user?.name || 'Administrator'} role="School Administrator" tint="lilac" />
+      <MiniCalendar events={calendarEvents} />
 
-    // Group Overall Class Averages (Bar Chart 2)
-    const classComparisonData = classesList.map(cls => {
-      const classReports = reportsWithAverages.filter(r => r.classId === cls);
-      const avgSum = classReports.reduce((sum, r) => sum + r.average, 0);
-      const overallAvg = classReports.length > 0 ? Math.round((avgSum / classReports.length) * 10) / 10 : 0;
-      return {
-        className: cls,
-        average: overallAvg
-      };
-    });
+      <div className="flex flex-col gap-2.5">
+        <SectionHeading>Needs attention</SectionHeading>
+        {pendingApprovals > 0 ? (
+          <button
+            onClick={() => onNavigate(View.ADMIN_APPROVALS)}
+            className="text-left bg-tint-peach rounded-panel p-4 flex items-center gap-3 transition-transform hover:-translate-y-0.5"
+          >
+            <div className="size-9 rounded-xl bg-white dark:bg-slate-900/50 text-ink-peach flex items-center justify-center shrink-0">
+              <Icon name="fact_check" className="text-[18px]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                {pendingApprovals} report {pendingApprovals === 1 ? 'batch' : 'batches'} awaiting release
+              </p>
+              <p className="mt-0.5 text-[10.5px] text-slate-500">Open the approvals queue</p>
+            </div>
+          </button>
+        ) : (
+          <p className="text-[11.5px] text-slate-400 leading-relaxed">Nothing is waiting on you right now.</p>
+        )}
+      </div>
+    </>
+  );
 
-    return {
-      termChartData,
-      classComparisonData,
-      classesList
-    };
-  }, [reports]);
+  if (loading) {
+    return (
+      <Overview>
+        <div className="h-14 w-64 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-[104px] skeleton rounded-tile bg-slate-200/70 dark:bg-slate-700/50" />
+          ))}
+        </div>
+        <SkeletonTable rows={4} />
+      </Overview>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-8 p-8 animate-in fade-in duration-150">
-      {/* Metrics Cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Students', value: stats.studentsCount.toLocaleString(), icon: 'groups', color: 'text-primary', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { label: 'Total Teachers', value: stats.teachersCount.toString(), icon: 'school', color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
-          { label: 'Fees Collected', value: `GH₵${(finance.totalCollected / 1000).toFixed(1)}k`, sub: `Total Sync`, target: '100% Reality', icon: 'account_balance_wallet', color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/20' },
-          { label: 'Attendance Rate', value: `${attendanceRate}%`, icon: 'co_present', color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-900/20' },
-        ].map((stat: any, i) => (
-          <div key={i} className="bg-white dark:bg-[#1a202c] rounded-xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between mb-4">
-              <div className={`size-10 rounded-lg ${stat.bg} flex items-center justify-center ${stat.color}`}>
-                <Icon name={stat.icon} />
-              </div>
-              {stat.target && (
-                <span className="flex items-center text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs font-medium">
-                  {stat.target}
-                </span>
-              )}
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                {stat.value} {stat.sub && <span className="text-base font-normal text-slate-400">{stat.sub}</span>}
-              </p>
-            </div>
-          </div>
-        ))}
-      </section>
+    <Overview aside={aside}>
+      <Greeting
+        name={firstName}
+        subtitle={`${stats.studentsCount.toLocaleString()} students · ${stats.teachersCount} staff`}
+        actions={
+          <>
+            <Button variant="secondary" icon="campaign" onClick={() => onNavigate(View.ADMIN_ANNOUNCEMENTS)}>
+              Announce
+            </Button>
+            <Button icon="person_add" onClick={() => onNavigate(View.ADMIN_REGISTRATION)}>
+              Register
+            </Button>
+          </>
+        }
+      />
 
-      {/* Financials & Demographics */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Fee Collection trends */}
-        <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Fee Collection Trends</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Monthly comparison (Last 6 Months)</p>
-            </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile tint="blue" icon="groups" label="Enrolled students" value={stats.studentsCount.toLocaleString()} />
+        <StatTile tint="lilac" icon="school" label="Teaching staff" value={stats.teachersCount} />
+        <StatTile
+          tint="mint"
+          icon="payments"
+          label="Fees collected"
+          value={`GHS ${money(finance.totalCollected)}`}
+          onClick={() => onNavigate(View.ADMIN_FEES)}
+        />
+        <StatTile tint="peach" icon="how_to_reg" label="Attendance rate" value={`${attendanceRate}%`} />
+      </div>
+
+      <SectionHeading>Finance</SectionHeading>
+      <div className="bg-tint-blue rounded-panel p-5 pb-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[13.5px] font-semibold text-ink-blue">Fee collection by month</p>
+            <p className="mt-0.5 text-[10.5px] text-slate-500">GHS received · {new Date().getFullYear()} to date</p>
           </div>
-          <div className="h-64 w-full">
+        </div>
+        {finance.chartData.length === 0 ? (
+          <p className="py-10 text-center text-[11.5px] text-slate-500">No payments recorded this year yet.</p>
+        ) : (
+          <div className="h-[190px] mt-3">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={finance.chartData.length > 0 ? finance.chartData : [{name: 'Waiting', amount: 0}]}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} dy={10} />
-                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-                  {(finance.chartData.length > 0 ? finance.chartData : [{name: 'Waiting', amount: 0}]).map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill="#195de6" fillOpacity={0.2 + (index * 0.15)} />
-                  ))}
-                </Bar>
+              <BarChart data={finance.chartData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="#c7d7fb" strokeDasharray="3 4" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} dy={8} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} width={44} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(25,93,230,0.08)' }}
+                  contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 26px -12px rgba(15,23,42,.35)', fontSize: 12 }}
+                  formatter={(v: any) => [`GHS ${Number(v).toLocaleString()}`, 'Collected']}
+                />
+                <Bar dataKey="amount" radius={[4, 4, 0, 0]} maxBarSize={44} fill={SERIES[0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Student distribution */}
-        <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Student Distribution</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">By Grade Level</p>
-            </div>
-          </div>
-          <div className="space-y-5">
-            {distribution.length === 0 && <p className="text-sm text-slate-500 italic">No distribution data</p>}
-            {distribution.map((item, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <span className="text-xs font-bold text-slate-500 w-16 uppercase">{item.grade}</span>
-                <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: (item.count / (stats.studentsCount || 1) * 100) + '%', opacity: 1 - (i * 0.1) }}></div>
+      <SectionHeading>Students per class</SectionHeading>
+      {distribution.length === 0 ? (
+        <EmptyState icon="groups" title="No classes with students yet" body="Class levels with registered students will be charted here." />
+      ) : (
+        <Card>
+          <div className="flex flex-col gap-2.5">
+            {distribution.map((d, i) => (
+              <div key={d.grade ?? i} className="flex items-center gap-3">
+                <span className="w-24 shrink-0 text-[11.5px] text-slate-600 dark:text-slate-400 truncate">{d.grade || 'Unassigned'}</span>
+                <div className="flex-1 h-3.5 rounded-[7px] bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-[7px]"
+                    style={{ width: `${(d.count / maxCount) * 100}%`, background: SERIES[i % SERIES.length] }}
+                  />
                 </div>
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 w-8 text-right">{item.count}</span>
+                <span className="w-9 shrink-0 text-right text-[11.5px] font-semibold text-slate-900 dark:text-white">{d.count}</span>
               </div>
             ))}
           </div>
-          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-sm">
-            <span className="text-slate-500">Total capacity usage</span>
-            <span className="font-bold text-slate-900 dark:text-white">88%</span>
-          </div>
-        </div>
-      </section>
+        </Card>
+      )}
 
-      {/* NEW SECTION: Academic Performance Insights */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Line graph comparing classes performances over terms */}
-        <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col">
-          <div className="mb-6">
-             <h3 className="text-base font-bold text-slate-900 dark:text-white">Class Performance Over Terms</h3>
-             <p className="text-sm text-slate-500 dark:text-slate-400">Line graph tracking averages across different terms</p>
-          </div>
-          <div className="h-72 w-full flex-grow">
-             <ResponsiveContainer width="100%" height="100%">
-               <LineChart data={performanceStats.termChartData} margin={{ left: -10, right: 10, bottom: 5, top: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-                  <YAxis domain={[50, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dx={-5} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: 12, fontWeight: 'bold' }} />
-                  {performanceStats.classesList.map((cls, idx) => (
-                    <Line 
-                      key={cls}
-                      type="monotone"
-                      dataKey={cls}
-                      stroke={CLASS_COLORS[idx % CLASS_COLORS.length]}
-                      strokeWidth={3}
-                      activeDot={{ r: 6 }}
-                      connectNulls
-                    />
-                  ))}
-               </LineChart>
-             </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Chart 2: Bar chart comparing overall GPA across different classes */}
-        <div className="bg-white dark:bg-[#1a202c] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col">
-          <div className="mb-6">
-             <h3 className="text-base font-bold text-slate-900 dark:text-white">Class-to-Class Performance</h3>
-             <p className="text-sm text-slate-500 dark:text-slate-400">Class GPA comparison registry sheet</p>
-          </div>
-          <div className="h-72 w-full flex-grow">
-             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={performanceStats.classComparisonData} margin={{ left: -10, right: 10, bottom: 5, top: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="className" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dx={-5} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="average" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                     {performanceStats.classComparisonData.map((entry, index) => (
-                       <Cell key={`cell-${index}`} fill={CLASS_COLORS[index % CLASS_COLORS.length]} />
-                     ))}
-                  </Bar>
-                </BarChart>
-             </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
-
-      {/* Directory section */}
-      <section className="flex flex-col gap-4 mb-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Student Directory BY GRADE</h2>
-          <p className="text-xs text-slate-505 font-bold uppercase tracking-widest text-slate-400">Master Enrollment List</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {distribution.map((gradeData, i) => {
-                const gradeStudents = allStudents.filter(s => (s.classId || 'Unassigned') === gradeData.grade)
-                    .sort((a, b) => a.name.localeCompare(b.name));
-                
-                return (
-                    <div key={gradeData.grade} className="bg-white dark:bg-[#1a202c] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/10">
-                            <h4 className="font-black text-slate-900 dark:text-white uppercase text-xs tracking-tighter flex items-center gap-2">
-                                <span className="size-2 bg-primary rounded-full"></span>
-                                {gradeData.grade}
-                            </h4>
-                            <span className="text-[10px] font-black text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded uppercase">
-                                {gradeStudents.length} Students
-                            </span>
-                        </div>
-                        <div className="p-2 space-y-1 flex-1">
-                            {gradeStudents.map(student => (
-                                <div key={student.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group">
-                                    <div className="flex items-center gap-3">
-                                        <div className="size-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-black">
-                                            {student.name.slice(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{student.name}</p>
-                                            <p className="text-[9px] font-mono text-slate-400 uppercase tracking-tighter">{student.loginId || 'Pending...'}</p>
-                                        </div>
-                                    </div>
-                                    <Icon name="chevron_right" className="text-slate-300 group-hover:text-primary transition-colors text-sm" />
-                                </div>
-                            ))}
-                            {gradeStudents.length === 0 && (
-                                <p className="text-xs text-slate-400 italic p-4 text-center">No students registered in this grade.</p>
-                            )}
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-      </section>
-    </div>
+      <SectionHeading
+        action={
+          <button onClick={() => onNavigate(View.ADMIN_REGISTRATION)} className="text-[11px] font-semibold text-primary hover:underline">
+            View all
+          </button>
+        }
+      >
+        Recent registrations
+      </SectionHeading>
+      {recentActivities.length === 0 ? (
+        <EmptyState icon="person_add" title="No registrations yet" body="Newly registered students and staff appear here." />
+      ) : (
+        <Card pad={false} className="p-2">
+          {recentActivities.map((a) => (
+            <div key={a.id} className="flex items-center gap-3 px-3 py-2.5 rounded-[14px] hover:bg-slate-50 dark:hover:bg-slate-900/40">
+              <Avatar name={a.name} size={32} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">{a.name}</p>
+                <p className="text-[10.5px] text-slate-500 truncate">{a.detail}</p>
+              </div>
+              <span className="text-[10.5px] text-slate-400 shrink-0">{a.date}</span>
+              <Badge tone="mint">{a.kind}</Badge>
+            </div>
+          ))}
+        </Card>
+      )}
+    </Overview>
   );
 };

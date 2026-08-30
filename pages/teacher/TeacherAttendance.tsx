@@ -1,266 +1,426 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
 import { useAuth } from '../../lib/AuthContext';
+import { exportToCSV } from '../../lib/exportUtils';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Avatar, Button, Card, Chip, EmptyState, InlineNote, Input, NoResults, PageHeader, SegmentedControl, SkeletonTable,
+  StatTile,
+} from '../../components/ui';
+
+type Status = 'present' | 'late' | 'absent';
+
+const OPTIONS: { value: Status; label: string }[] = [
+  { value: 'present', label: 'Present' },
+  { value: 'late', label: 'Late' },
+  { value: 'absent', label: 'Absent' },
+];
+
+const toneFor = (v: Status): 'success' | 'warning' | 'danger' =>
+  v === 'present' ? 'success' : v === 'late' ? 'warning' : 'danger';
 
 export const TeacherAttendance: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
+  const classes = user?.assignedClasses?.length ? user.assignedClasses : ['Unassigned'];
+
+  // Was pinned to assignedClasses[0], so a teacher with two classes could only
+  // ever mark the first one.
+  const [activeClassId, setActiveClassId] = useState(classes[0]);
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [finalizing, setFinalizing] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
-  // Use the teacher's first assigned class as default
-  const activeClassId = user?.assignedClasses?.[0] || 'Unassigned';
+  const today = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(today);
+  const isToday = selectedDate === today;
 
   useEffect(() => {
     if (!user?.uid || activeClassId === 'Unassigned') {
-        if (activeClassId === 'Unassigned') setLoading(false);
-        return;
+      if (activeClassId === 'Unassigned') setLoading(false);
+      return;
     }
-
-    const unsubAttendance = firestoreService.getAttendanceForClass(activeClassId, (data) => {
-      setAttendance(data);
-    });
-
+    setLoading(true);
+    const unsubAttendance = firestoreService.getAttendanceForClass(activeClassId, setAttendance);
     const unsubStudents = firestoreService.getStudentsForClass(activeClassId, (data) => {
       setStudents(data);
       setLoading(false);
     });
-    
     return () => {
       unsubAttendance();
       unsubStudents();
     };
   }, [user, activeClassId]);
 
-  const handleMark = async (studentId: string, status: string) => {
+  /** Marks for the selected day. The tiles previously counted every record ever
+   *  stored for the class, so "present today" was an all-time total. */
+  const todayByStudent = useMemo(() => {
+    const m = new Map<string, Status>();
+    attendance.filter((a) => a.date === selectedDate).forEach((a) => m.set(a.studentId, a.status));
+    return m;
+  }, [attendance, selectedDate]);
+
+  /** Every day this class has a record for, newest first — the history the API
+   *  was already returning and the screen used to discard. */
+  const historyDays = useMemo(() => {
+    const byDate = new Map<string, { present: number; late: number; absent: number; total: number }>();
+    attendance.forEach((a) => {
+      if (!a.date) return;
+      const row = byDate.get(a.date) ?? { present: 0, late: 0, absent: 0, total: 0 };
+      if (a.status in row) (row as any)[a.status] += 1;
+      row.total += 1;
+      byDate.set(a.date, row);
+    });
+    return [...byDate.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([date, c]) => ({ date, ...c, rate: c.total ? Math.round((c.present / c.total) * 100) : 0 }));
+  }, [attendance]);
+
+  const shiftDay = (delta: number) => {
+    const d = new Date(`${selectedDate}T00:00:00`);
+    d.setDate(d.getDate() + delta);
+    const next = d.toISOString().split('T')[0];
+    if (next > today) return; // no marking the future
+    setSelectedDate(next);
+    setStatus(null);
+  };
+
+  const counts = useMemo(() => {
+    const c = { present: 0, late: 0, absent: 0 };
+    todayByStudent.forEach((s) => {
+      if (s in c) c[s as Status] += 1;
+    });
+    return c;
+  }, [todayByStudent]);
+
+  const unmarked = students.length - todayByStudent.size;
+
+  const mark = async (studentId: string, next: Status) => {
+    setStatus(null);
+    setBusy(studentId);
     try {
-      const student = students.find(s => s.id === studentId);
+      const student = students.find((s) => s.id === studentId);
       await firestoreService.markAttendance({
         studentId,
         parentId: student?.parentId,
-        classId: activeClassId, 
-        date: new Date().toISOString().split('T')[0],
-        status
+        classId: activeClassId,
+        date: selectedDate,
+        status: next,
       });
     } catch (error) {
-      console.error("Attendance failed", error);
+      console.error('Attendance failed', error);
+      setStatus({ tone: 'bad', text: 'That mark did not save. Check your connection and try again.' });
+    } finally {
+      setBusy(null);
     }
   };
 
-  const handleMarkAllPresent = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const promises = students.map(s => firestoreService.markAttendance({
-      studentId: s.id,
-      parentId: s.parentId,
-      classId: activeClassId,
-      date: today,
-      status: 'present'
-    }));
-    await Promise.all(promises);
-    alert(`Marked ${students.length} students as present.`);
+  const markAllPresent = async () => {
+    setStatus(null);
+    try {
+      await Promise.all(
+        students.map((s) =>
+          firestoreService.markAttendance({
+            studentId: s.id,
+            parentId: s.parentId,
+            classId: activeClassId,
+            date: selectedDate,
+            status: 'present',
+          }),
+        ),
+      );
+      setStatus({ tone: 'ok', text: `Marked all ${students.length} students present.` });
+    } catch {
+      setStatus({ tone: 'bad', text: 'Could not mark everyone present.' });
+    }
   };
 
-  const today = new Date().toISOString().split('T')[0];
-  const recordedToday = attendance.filter(a => a.date === today).length;
-  const visibleStudents = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
-
-  const handleFinalize = async () => {
-    const unrecorded = students.filter(s => !attendance.find(a => a.studentId === s.id && a.date === today));
+  const finalize = async () => {
+    const unrecorded = students.filter((s) => !todayByStudent.has(s.id));
     if (unrecorded.length === 0) {
-      alert("All students are already recorded for today.");
+      setStatus({ tone: 'ok', text: 'Every student is already recorded for today.' });
       return;
     }
     if (!window.confirm(`${unrecorded.length} student(s) have no attendance recorded today. Mark them absent and finalize?`)) return;
+    setFinalizing(true);
+    setStatus(null);
     try {
-      setFinalizing(true);
-      await Promise.all(unrecorded.map(s => firestoreService.markAttendance({
-        studentId: s.id,
-        parentId: s.parentId,
-        classId: activeClassId,
-        date: today,
-        status: 'absent'
-      })));
-      alert("Attendance finalized for today.");
-    } catch (error) {
-      alert("Failed to finalize attendance.");
+      await Promise.all(
+        unrecorded.map((s) =>
+          firestoreService.markAttendance({
+            studentId: s.id,
+            parentId: s.parentId,
+            classId: activeClassId,
+            date: selectedDate,
+            status: 'absent',
+          }),
+        ),
+      );
+      setStatus({ tone: 'ok', text: `Finalized. ${unrecorded.length} unrecorded student(s) marked absent.` });
+    } catch {
+      setStatus({ tone: 'bad', text: 'Could not finalize attendance.' });
     } finally {
       setFinalizing(false);
     }
   };
 
+  const visible = students.filter((s) => (s.name || '').toLowerCase().includes(search.toLowerCase()));
+
+  if (loading) {
+    return (
+      <WorkSurface>
+        <div className="h-14 w-64 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={6} />
+      </WorkSurface>
+    );
+  }
+
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark">
-      {/* Header */}
-      <div className="px-8 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center shrink-0">
-        <div>
-           <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-             <span className="font-bold text-primary">EduManage</span>
-             <span>/</span>
-             <span className="font-medium">Attendance Tracking</span>
-           </div>
-           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Student Attendance</h1>
+    <WorkSurface>
+      <PageHeader
+        title="Attendance"
+        subtitle={`${activeClassId} · ${new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        })}${isToday ? '' : ' · past date'}`}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              icon="file_download"
+              onClick={() =>
+                exportToCSV(
+                  students.map((s) => ({ Name: s.name, Student: s.id, Status: todayByStudent.get(s.id) ?? 'not marked' })),
+                  `attendance_${activeClassId}_${selectedDate}.csv`,
+                )
+              }
+            >
+              Export register
+            </Button>
+            <Button icon="check" onClick={finalize} loading={finalizing} disabled={students.length === 0}>
+              Finalize day
+            </Button>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex items-center gap-1.5 bg-surface-light dark:bg-surface-dark border border-slate-200 dark:border-slate-700 rounded-control p-1">
+          <button
+            type="button"
+            onClick={() => shiftDay(-1)}
+            aria-label="Previous day"
+            className="size-8 rounded-[9px] flex items-center justify-center text-slate-500 hover:text-primary hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <Icon name="chevron_left" className="text-[17px]" />
+          </button>
+          <input
+            type="date"
+            value={selectedDate}
+            max={today}
+            onChange={(e) => {
+              if (e.target.value && e.target.value <= today) {
+                setSelectedDate(e.target.value);
+                setStatus(null);
+              }
+            }}
+            aria-label="Attendance date"
+            className="bg-transparent text-[12.5px] font-medium text-slate-900 dark:text-white outline-none px-1"
+          />
+          <button
+            type="button"
+            onClick={() => shiftDay(1)}
+            disabled={isToday}
+            aria-label="Next day"
+            className="size-8 rounded-[9px] flex items-center justify-center text-slate-500 hover:text-primary hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          >
+            <Icon name="chevron_right" className="text-[17px]" />
+          </button>
         </div>
-        
-        <div className="flex items-center gap-6">
-            <div className="text-right">
-                <p className="text-xs font-bold uppercase text-slate-500">Current Session</p>
-                <p className="text-sm font-bold text-slate-900 dark:text-white">{activeClassId} - Academic Session</p>
-            </div>
-            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700"></div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                <Icon name="calendar_today" className="text-slate-500 text-sm" />
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-            </div>
+        {!isToday && (
+          <Button variant="secondary" icon="calendar_today" onClick={() => { setSelectedDate(today); setStatus(null); }}>
+            Back to today
+          </Button>
+        )}
+      </div>
+
+      {!isToday && (
+        <InlineNote tone="butter" icon="history">
+          You are viewing <span className="font-semibold">
+            {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+          </span>, not today. Changes here correct the record for that day.
+        </InlineNote>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile tint="mint" icon="check_circle" label="Present" value={counts.present} />
+        <StatTile tint="butter" icon="schedule" label="Late" value={counts.late} />
+        <StatTile tint="blush" icon="cancel" label="Absent" value={counts.absent} />
+        <StatTile tint="plain" icon="pending" label="Not marked" value={unmarked < 0 ? 0 : unmarked} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {classes.map((c) => (
+            <Chip key={c} active={c === activeClassId} onClick={() => setActiveClassId(c)}>
+              {c}
+            </Chip>
+          ))}
+          <span className="hidden md:block w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1" />
+          <div className="relative">
+            <Icon name="search" className="text-[15px] text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Find a student"
+              aria-label="Find a student"
+              className="h-9 w-[230px] pl-9"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {status && (
+            <span className={`text-[11.5px] flex items-center gap-1.5 ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+              <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+              {status.text}
+            </span>
+          )}
+          <Button variant="secondary" onClick={markAllPresent} disabled={students.length === 0}>
+            Mark all present
+          </Button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col p-6 lg:p-8 max-w-6xl mx-auto w-full">
-         
-         {/* Stats Cards */}
-         <div className="grid grid-cols-4 gap-4 mb-8 shrink-0">
-             {[
-                 { label: 'TOTAL CLASS', value: students.length.toString(), icon: 'groups', color: 'text-primary bg-blue-50' },
-                 { label: 'PRESENT TODAY', value: attendance.filter(a => a.status === 'present').length.toString(), icon: 'check_circle', color: 'text-green-600 bg-green-50' },
-                 { label: 'ABSENT TODAY', value: attendance.filter(a => a.status === 'absent').length.toString(), icon: 'cancel', color: 'text-red-500 bg-red-50' },
-                 { label: 'LATE ARRIVAL', value: attendance.filter(a => a.status === 'late').length.toString(), icon: 'schedule', color: 'text-orange-500 bg-orange-50' },
-             ].map((stat, i) => (
-                 <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
-                     <div className={`size-12 rounded-lg flex items-center justify-center ${stat.color} dark:bg-opacity-20`}>
-                         <Icon name={stat.icon} className="text-2xl" />
-                     </div>
-                     <div>
-                         <p className="text-xs font-bold text-slate-500 uppercase">{stat.label}</p>
-                         <p className="text-2xl font-black text-slate-900 dark:text-white">{stat.value}</p>
-                     </div>
-                 </div>
-             ))}
-         </div>
-
-         {/* Roll Call List Header */}
-         <div className="flex justify-between items-end mb-4 shrink-0">
-             <div>
-                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Roll Call List</h3>
-                 <p className="text-xs text-slate-500">Mark attendance for today's session</p>
-             </div>
-             <div className="flex gap-3">
-                 <div className="relative">
-                     <Icon name="search" className="absolute left-3 top-2.5 text-slate-400 text-sm" />
-                     <input
-                       type="text"
-                       value={search}
-                       onChange={(e) => setSearch(e.target.value)}
-                       placeholder="Search students..."
-                       className="pl-9 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm w-64"
-                     />
-                 </div>
-                 <button 
-                  onClick={handleMarkAllPresent}
-                  className="text-primary text-sm font-bold hover:underline px-2"
-                >
-                  Mark All Present
-                </button>
-             </div>
-         </div>
-
-         {/* List Container */}
-         <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
-             <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 text-xs font-bold uppercase text-slate-500">
-                 <div className="col-span-4 pl-2">Profile</div>
-                 <div className="col-span-3">Full Name & Student ID</div>
-                 <div className="col-span-4 text-center">Attendance Status</div>
-                 <div className="col-span-1 text-right pr-2">Remarks</div>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                 {visibleStudents.map((student, i) => {
-                     const today = new Date().toISOString().split('T')[0];
-                     const record = attendance.find(a => a.studentId === student.id && a.date === today);
-                     const currentStatus = record?.status;
-
-                     return (
-                     <div key={student.id || i} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                         <div className="col-span-4 pl-2">
-                             <div className="size-10 rounded-full bg-cover bg-center border border-slate-200" style={{ backgroundImage: `url(https://picsum.photos/seed/${student.id}/100)` }}></div>
-                         </div>
-                         <div className="col-span-3">
-                             <p className="text-sm font-bold text-slate-900 dark:text-white">{student.name}</p>
-                             <p className="text-[10px] text-slate-400 font-mono">STUDENT ID: {student.id?.slice(0, 8)}</p>
-                         </div>
-                         <div className="col-span-4 flex justify-center">
-                             <div className="inline-flex bg-slate-100 dark:bg-slate-900 rounded-lg p-1 gap-1">
-                                 <button 
-                                   onClick={() => handleMark(student.id, 'present')}
-                                   className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${currentStatus === 'present' ? 'bg-green-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                                 >
-                                     {currentStatus === 'present' && <Icon name="check" className="text-xs" />} Present
-                                 </button>
-                                 <button 
-                                   onClick={() => handleMark(student.id, 'absent')}
-                                   className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${currentStatus === 'absent' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                                 >
-                                     {currentStatus === 'absent' && <Icon name="close" className="text-xs" />} Absent
-                                 </button>
-                                 <button 
-                                   onClick={() => handleMark(student.id, 'late')}
-                                   className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1 ${currentStatus === 'late' ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
-                                 >
-                                     Late
-                                 </button>
-                             </div>
-                         </div>
-                         <div className="col-span-1 text-right pr-2">
-                             {currentStatus && <Icon name="check_circle" className="text-emerald-500 text-sm" />}
-                         </div>
-                     </div>
-                     );
-                 })}
-                 {visibleStudents.length === 0 && (
-                    <div className="p-12 text-center text-slate-400 italic">
-                      {students.length === 0 ? 'No students found for this class.' : 'No students match your search.'}
-                    </div>
-                 )}
-             </div>
-
-             <div className="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-tighter">
-                 <span>SHOWING {visibleStudents.length} OF {students.length} STUDENTS</span>
-             </div>
-         </div>
-      </div>
-      
-      {/* Footer Actions */}
-      <div className="px-8 py-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-3">
-             <div className="size-8 rounded-full bg-cover bg-center" style={{ backgroundImage: `url(${user?.avatar || 'https://picsum.photos/seed/teacher/200'})` }}></div>
-             <div>
-                <p className="text-xs font-bold">{user?.name || 'Teacher'}</p>
-                <button onClick={signOut} className="text-[10px] text-red-500 hover:underline flex items-center gap-1"><Icon name="logout" className="text-[10px]" /> Sign Out</button>
-             </div>
+      {students.length === 0 ? (
+        <EmptyState
+          icon="groups"
+          title={activeClassId === 'Unassigned' ? 'You have no class assigned' : `No students in ${activeClassId}`}
+          body={
+            activeClassId === 'Unassigned'
+              ? 'Ask your school administrator to assign you to a class.'
+              : 'Students registered into this class will appear here.'
+          }
+        />
+      ) : visible.length === 0 ? (
+        <NoResults
+          title={`No students match “${search}”`}
+          body={`${students.length} students in ${activeClassId}, none with that name.`}
+          onClear={() => setSearch('')}
+          clearLabel="Clear search"
+        />
+      ) : (
+        <Card pad={false} className="overflow-hidden">
+          <div className="hidden md:grid grid-cols-[40px_minmax(0,1fr)_300px_120px] items-center gap-4 px-5 py-3.5 bg-slate-50 dark:bg-slate-900/40 text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+            <span>#</span>
+            <span>Student</span>
+            <span>Today</span>
+            <span className="text-right">Recorded</span>
           </div>
-          
-          <div className="flex items-center gap-2">
-              <Icon name="check_circle" className="text-green-500" />
-              <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Submission Ready</p>
-                  <p className="text-[10px] text-slate-400">{recordedToday}/{students.length} students recorded today.</p>
-              </div>
-          </div>
-          
-          <div className="flex gap-3">
-              <button
-                onClick={handleFinalize}
-                disabled={finalizing}
-                className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-50"
+
+          {visible.map((s, i) => {
+            const current = todayByStudent.get(s.id) ?? null;
+            return (
+              <div
+                key={s.id}
+                className={`grid grid-cols-1 md:grid-cols-[40px_minmax(0,1fr)_300px_120px] items-center gap-3 md:gap-4 px-5 py-3 border-t border-slate-100 dark:border-slate-800 ${
+                  current === 'absent' ? 'bg-tint-blush' : current === null ? 'bg-slate-50/60 dark:bg-slate-900/20' : ''
+                } ${busy === s.id ? 'opacity-60' : ''}`}
               >
-                  <Icon name={finalizing ? 'sync' : 'send'} className={`text-sm ${finalizing ? 'animate-spin' : ''}`} />
-                  {finalizing ? 'Finalizing...' : 'Finalize & Mark Remaining Absent'}
-              </button>
+                <span className="hidden md:block text-[11.5px] font-semibold text-slate-300">{String(i + 1).padStart(2, '0')}</span>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Avatar name={s.name} size={34} tint={current === 'absent' ? 'blush' : 'blue'} />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">{s.name}</p>
+                    <p className="text-[10.5px] text-slate-400 truncate">{current === null ? 'Not marked yet' : s.id}</p>
+                  </div>
+                </div>
+                <SegmentedControl
+                  options={OPTIONS}
+                  value={current}
+                  onChange={(v) => mark(s.id, v)}
+                  toneFor={toneFor}
+                  className={current === null ? 'border border-dashed border-slate-300 dark:border-slate-700' : ''}
+                />
+                <span className="hidden md:block text-right text-[11.5px] text-slate-400">
+                  {current ? <Icon name="check_circle" className="text-[16px] text-success" /> : '—'}
+                </span>
+              </div>
+            );
+          })}
+
+          <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 flex items-center gap-3">
+            <div className="w-36 h-[7px] rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full"
+                style={{ width: `${students.length ? (todayByStudent.size / students.length) * 100 : 0}%` }}
+              />
+            </div>
+            <span className="text-[11.5px] text-slate-500">
+              <span className="font-semibold text-slate-900 dark:text-white">
+                {todayByStudent.size} of {students.length}
+              </span>{' '}
+              students marked
+            </span>
           </div>
-      </div>
-    </div>
+        </Card>
+      )}
+      {historyDays.length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Previous registers</p>
+              <p className="mt-0.5 text-[11.5px] text-slate-500">
+                Every day {activeClassId} has a record for. Pick one to view or correct it.
+              </p>
+            </div>
+            <span className="text-[11.5px] text-slate-400">{historyDays.length} days recorded</span>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {historyDays.slice(0, 30).map((d) => {
+              const on = d.date === selectedDate;
+              const day = new Date(`${d.date}T00:00:00`);
+              return (
+                <button
+                  key={d.date}
+                  type="button"
+                  onClick={() => { setSelectedDate(d.date); setStatus(null); }}
+                  aria-pressed={on}
+                  aria-label={`View ${day.toLocaleDateString()} — ${d.rate}% present`}
+                  className={`shrink-0 w-[92px] rounded-[14px] p-2.5 text-left transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    on
+                      ? 'bg-primary text-white shadow-primary'
+                      : 'bg-slate-50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <p className={`text-[10px] font-semibold uppercase tracking-[0.06em] ${on ? 'text-white/70' : 'text-slate-400'}`}>
+                    {day.toLocaleDateString(undefined, { weekday: 'short' })}
+                  </p>
+                  <p className={`mt-0.5 text-[13px] font-bold ${on ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                    {day.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                  </p>
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        on ? 'bg-white' : d.rate >= 90 ? 'bg-success' : d.rate >= 75 ? 'bg-warning' : 'bg-danger'
+                      }`}
+                    />
+                    <span className={`text-[10.5px] font-semibold ${on ? 'text-white/85' : 'text-slate-500'}`}>
+                      {d.rate}%
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+    </WorkSurface>
   );
 };

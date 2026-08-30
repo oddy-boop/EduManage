@@ -2,7 +2,29 @@ import React from 'react';
 import { Icon } from './Icon';
 import { View } from '../types';
 import { useAuth } from '../lib/AuthContext';
-import { firestoreService } from '../lib/services';
+import { Avatar } from './ui';
+import { useNotifications, type Notification } from '../lib/useNotifications';
+
+/* ---------------------------------------------------------------------------
+   Shells
+
+   Two, as approved:
+     Overview     rail + content + right profile/calendar column  (dashboards)
+     WorkSurface  rail + full-width content                       (tables, forms)
+
+   Below `lg` the rail is replaced by a 5-item bottom tab bar rather than the
+   old off-canvas drawer — a teacher marking a register one-handed should not
+   have to open a drawer to change screen.
+   --------------------------------------------------------------------------- */
+
+interface NavEntry {
+  icon: string;
+  label: string;
+  view: View;
+  /** Other views that should keep this entry lit. */
+  also?: View[];
+  count?: number;
+}
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,333 +33,379 @@ interface LayoutProps {
   role: string;
 }
 
-export const TeacherLayout: React.FC<LayoutProps> = ({ children, onNavigate, currentView, role }) => {
-  const { user, signOut } = useAuth();
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-  
-  return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 overflow-hidden font-display">
-      {/* Mobile Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-      
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface-light dark:bg-surface-dark border-r border-slate-200 dark:border-slate-800 flex flex-col h-full shrink-0 transition-transform lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800/50 flex justify-between items-center">
-          <div className="flex gap-3 items-center">
-            <div className="bg-primary aspect-square rounded-xl size-10 flex items-center justify-center text-white shadow-lg shadow-primary/20">
-              <Icon name="school" className="text-[24px]" />
-            </div>
-            <div className="flex flex-col">
-              <h1 className="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight">EduManage</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-xs font-medium uppercase tracking-wider">Teacher Portal</p>
-            </div>
-          </div>
-          <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
-            <Icon name="close" />
-          </button>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
-          <NavItem 
-            icon="dashboard" 
-            label="Dashboard" 
-            active={currentView === View.TEACHER_DASHBOARD} 
-            onClick={() => { onNavigate(View.TEACHER_DASHBOARD); setIsSidebarOpen(false); }} 
-          />
-          <NavItem 
-            icon="link" 
-            label="Quiz URL" 
-            active={currentView === View.TEACHER_QUIZ_CONFIG || currentView === View.TEACHER_QUIZ_SHARE} 
-            onClick={() => { onNavigate(View.TEACHER_QUIZ_CONFIG); setIsSidebarOpen(false); }} 
-          />
-          <NavItem 
-            icon="leaderboard" 
-            label="Quiz Results" 
-            active={currentView === View.TEACHER_QUIZ_RESULTS} 
-            onClick={() => { onNavigate(View.TEACHER_QUIZ_RESULTS); setIsSidebarOpen(false); }} 
-          />
-          <NavItem
-            icon="fact_check"
-            label="Assessment Book"
-            active={currentView === View.TEACHER_ASSESSMENT_BOOK}
-            onClick={() => { onNavigate(View.TEACHER_ASSESSMENT_BOOK); setIsSidebarOpen(false); }}
-          />
-          <NavItem
-            icon="analytics"
-            label="Report Generation"
-            active={currentView === View.TEACHER_REPORT_ENTRY}
-            onClick={() => { onNavigate(View.TEACHER_REPORT_ENTRY); setIsSidebarOpen(false); }}
-          />
-          <NavItem
-            icon="task_alt"
-            label="Class Teacher Review"
-            active={currentView === View.TEACHER_CLASS_REVIEW}
-            onClick={() => { onNavigate(View.TEACHER_CLASS_REVIEW); setIsSidebarOpen(false); }}
-          />
-          <NavItem 
-            icon="assignment" 
-            label="Assignments" 
-            active={currentView === View.TEACHER_ASSIGNMENTS} 
-            onClick={() => { onNavigate(View.TEACHER_ASSIGNMENTS); setIsSidebarOpen(false); }} 
-          />
-          <NavItem 
-            icon="how_to_reg" 
-            label="Attendance" 
-            active={currentView === View.TEACHER_ATTENDANCE} 
-            onClick={() => { onNavigate(View.TEACHER_ATTENDANCE); setIsSidebarOpen(false); }} 
-          />
-        </nav>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-900/50">
-            <div className="relative">
-              <div className="bg-center bg-no-repeat bg-cover rounded-full size-10 ring-2 ring-white dark:ring-slate-700 shadow-sm" style={{ backgroundImage: `url(${user?.avatar || 'https://picsum.photos/seed/user/200'})` }}></div>
-              <div className="absolute bottom-0 right-0 size-3 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full"></div>
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name || 'Teacher'}</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">Math Dept. Head</span>
-            </div>
-            <button onClick={() => signOut()} className="text-slate-400 hover:text-red-500 transition-colors">
-              <Icon name="logout" className="text-lg" />
-            </button>
-          </div>
-        </div>
-      </aside>
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
-        <Header role="Teacher" onMenuClick={() => setIsSidebarOpen(true)} />
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-};
+const TEACHER_NAV: NavEntry[] = [
+  { icon: 'dashboard', label: 'Dashboard', view: View.TEACHER_DASHBOARD },
+  { icon: 'link', label: 'Quiz URL', view: View.TEACHER_QUIZ_CONFIG, also: [View.TEACHER_QUIZ_SHARE] },
+  { icon: 'leaderboard', label: 'Quiz Results', view: View.TEACHER_QUIZ_RESULTS },
+  { icon: 'fact_check', label: 'Assessment Book', view: View.TEACHER_ASSESSMENT_BOOK },
+  { icon: 'analytics', label: 'Report Generation', view: View.TEACHER_REPORT_ENTRY },
+  { icon: 'task_alt', label: 'Class Teacher Review', view: View.TEACHER_CLASS_REVIEW },
+  { icon: 'assignment', label: 'Assignments', view: View.TEACHER_ASSIGNMENTS },
+  { icon: 'how_to_reg', label: 'Attendance', view: View.TEACHER_ATTENDANCE },
+];
 
-export const AdminLayout: React.FC<LayoutProps> = ({ children, onNavigate, currentView }) => {
-  const { user, signOut } = useAuth();
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-  
-  return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 overflow-hidden font-display">
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-      
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-[#1a202c] border-r border-slate-200 dark:border-slate-800 flex flex-col h-full shrink-0 transition-transform lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <Icon name="school" className="text-2xl" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold leading-none text-slate-900 dark:text-white">Admin Portal</h1>
-              <span className="text-xs text-slate-500 dark:text-slate-400">School Admin</span>
-            </div>
-          </div>
-          <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
-            <Icon name="close" />
-          </button>
-        </div>
-        <nav className="flex-1 px-4 flex flex-col gap-2 overflow-y-auto">
-          <NavItem icon="dashboard" label="Dashboard" active={currentView === View.ADMIN_DASHBOARD} onClick={() => { onNavigate(View.ADMIN_DASHBOARD); setIsSidebarOpen(false); }} />
-          <NavItem icon="person_add" label="Registration" active={currentView === View.ADMIN_REGISTRATION} onClick={() => { onNavigate(View.ADMIN_REGISTRATION); setIsSidebarOpen(false); }} />
-          <NavItem icon="payments" label="School Fees" active={currentView === View.ADMIN_FEES} onClick={() => { onNavigate(View.ADMIN_FEES); setIsSidebarOpen(false); }} />
-          <NavItem icon="calendar_month" label="Academic Calendar" active={currentView === View.ADMIN_CALENDAR} onClick={() => { onNavigate(View.ADMIN_CALENDAR); setIsSidebarOpen(false); }} />
-          <NavItem icon="fact_check" label="Report Approvals" active={currentView === View.ADMIN_APPROVALS} onClick={() => { onNavigate(View.ADMIN_APPROVALS); setIsSidebarOpen(false); }} />
-          <NavItem icon="campaign" label="Announcements" active={currentView === View.ADMIN_ANNOUNCEMENTS} onClick={() => { onNavigate(View.ADMIN_ANNOUNCEMENTS); setIsSidebarOpen(false); }} />
-          <NavItem icon="history" label="Audit Logs" active={currentView === View.ADMIN_AUDIT_LOGS} onClick={() => { onNavigate(View.ADMIN_AUDIT_LOGS); setIsSidebarOpen(false); }} />
-          <NavItem icon="settings" label="School Settings" active={currentView === View.ADMIN_SETTINGS} onClick={() => { onNavigate(View.ADMIN_SETTINGS); setIsSidebarOpen(false); }} />
-        </nav>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-full bg-cover bg-center" style={{ backgroundImage: `url(${user?.avatar || 'https://picsum.photos/seed/admin/200'})` }}></div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{user?.name || 'Administrator'}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Administrator</p>
-            </div>
-            <button onClick={() => signOut()} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-              <Icon name="logout" />
-            </button>
-          </div>
-        </div>
-      </aside>
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
-        <Header role="Admin" onMenuClick={() => setIsSidebarOpen(true)} />
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-};
+const ADMIN_NAV: NavEntry[] = [
+  { icon: 'dashboard', label: 'Dashboard', view: View.ADMIN_DASHBOARD },
+  { icon: 'person_add', label: 'Registration', view: View.ADMIN_REGISTRATION },
+  { icon: 'payments', label: 'School Fees', view: View.ADMIN_FEES },
+  { icon: 'calendar_month', label: 'Academic Calendar', view: View.ADMIN_CALENDAR },
+  { icon: 'fact_check', label: 'Report Approvals', view: View.ADMIN_APPROVALS },
+  { icon: 'campaign', label: 'Announcements', view: View.ADMIN_ANNOUNCEMENTS },
+  { icon: 'history', label: 'Audit Logs', view: View.ADMIN_AUDIT_LOGS },
+  { icon: 'settings', label: 'School Settings', view: View.ADMIN_SETTINGS },
+];
 
-export const ParentLayout: React.FC<LayoutProps> = ({ children, onNavigate, currentView }) => {
-  const { user, signOut } = useAuth();
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
-  
-  return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 overflow-hidden font-display">
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-      
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-6 h-full transition-transform lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex flex-col gap-8">
-          <div className="flex items-center justify-between lg:justify-start gap-3 px-2">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary rounded-lg p-2 text-white flex items-center justify-center">
-                <Icon name="school" className="text-2xl" />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-[#0e121b] dark:text-white text-lg font-bold leading-tight">Parent Portal</h1>
-                <p className="text-[#4e6797] dark:text-slate-400 text-xs font-normal">Global Academy</p>
-              </div>
-            </div>
-            <button className="lg:hidden text-slate-400" onClick={() => setIsSidebarOpen(false)}>
-              <Icon name="close" />
-            </button>
-          </div>
-          <nav className="flex flex-col gap-2">
-            <NavItem icon="dashboard" label="Dashboard" active={currentView === View.PARENT_DASHBOARD} onClick={() => { onNavigate(View.PARENT_DASHBOARD); setIsSidebarOpen(false); }} />
-            <NavItem icon="payments" label="School Fees" active={currentView === View.PARENT_FEES} onClick={() => { onNavigate(View.PARENT_FEES); setIsSidebarOpen(false); }} />
-            <NavItem icon="assignment" label="Assignments" active={currentView === View.PARENT_ASSIGNMENTS} onClick={() => { onNavigate(View.PARENT_ASSIGNMENTS); setIsSidebarOpen(false); }} />
-            <NavItem icon="description" label="Reports" active={currentView === View.PARENT_REPORTS} onClick={() => { onNavigate(View.PARENT_REPORTS); setIsSidebarOpen(false); }} />
-          </nav>
-        </div>
-        <div className="border-t border-slate-200 dark:border-slate-800 pt-6">
-          <div className="flex items-center gap-3 px-2 py-2">
-            <div className="w-10 h-10 rounded-full bg-cover bg-center" style={{ backgroundImage: `url(${user?.avatar || 'https://picsum.photos/seed/parent/200'})` }}></div>
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <p className="text-sm font-semibold text-[#0e121b] dark:text-white truncate">{user?.name || 'Parent User'}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Guardian</p>
-            </div>
-            <button onClick={() => signOut()} className="text-slate-400 hover:text-red-500">
-              <Icon name="logout" className="text-lg" />
-            </button>
-          </div>
-        </div>
-      </aside>
-      <main className="flex-1 flex flex-col overflow-hidden bg-background-light dark:bg-background-dark">
-        <Header role="Parent" onMenuClick={() => setIsSidebarOpen(true)} />
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-};
+const PARENT_NAV: NavEntry[] = [
+  { icon: 'dashboard', label: 'Dashboard', view: View.PARENT_DASHBOARD },
+  { icon: 'payments', label: 'School Fees', view: View.PARENT_FEES },
+  { icon: 'assignment', label: 'Assignments', view: View.PARENT_ASSIGNMENTS },
+  { icon: 'description', label: 'Reports', view: View.PARENT_REPORTS, also: [View.PARENT_REPORT_DETAIL] },
+];
 
-const NavItem: React.FC<{ icon: string; label: string; active?: boolean; onClick: () => void }> = ({ icon, label, active, onClick }) => (
-  <button 
+const isActive = (entry: NavEntry, current: View) =>
+  entry.view === current || (entry.also?.includes(current) ?? false);
+
+/* --- Rail ----------------------------------------------------------------- */
+
+const RailItem: React.FC<{ entry: NavEntry; active: boolean; onClick: () => void }> = ({ entry, active, onClick }) => (
+  <button
     onClick={onClick}
-    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg w-full text-left transition-all ${active ? 'bg-primary text-white shadow-md shadow-primary/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-primary dark:hover:text-white'}`}
+    aria-current={active ? 'page' : undefined}
+    className={`w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] tracking-[-0.005em] transition-colors
+      focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white ${
+        active
+          ? 'bg-white text-primary font-semibold shadow-rail'
+          : 'text-white/[0.78] font-medium hover:bg-white/[0.14] hover:text-white'
+      }`}
   >
-    <Icon name={icon} className={`text-[22px] ${active ? 'fill-1' : ''}`} />
-    <span className="text-sm font-medium">{label}</span>
+    <Icon name={entry.icon} className="text-[18px]" />
+    <span className="truncate">{entry.label}</span>
+    {entry.count ? (
+      <span className="ml-auto bg-white text-primary text-[10.5px] font-bold px-[7px] py-px rounded-full">
+        {entry.count}
+      </span>
+    ) : null}
   </button>
 );
 
-const Header: React.FC<{ role: string; onMenuClick?: () => void }> = ({ role, onMenuClick }) => {
-  const { user, signOut } = useAuth();
-  const [notifOpen, setNotifOpen] = React.useState(false);
-  const [accountOpen, setAccountOpen] = React.useState(false);
-  const [announcements, setAnnouncements] = React.useState<any[]>([]);
+const TONE: Record<Notification['tone'], { dot: string; tint: string }> = {
+  urgent: { dot: 'bg-danger', tint: 'bg-tint-blush' },
+  warn: { dot: 'bg-warning', tint: 'bg-tint-butter' },
+  good: { dot: 'bg-success', tint: 'bg-tint-mint' },
+  info: { dot: 'bg-primary', tint: 'bg-tint-blue' },
+};
+
+/** Rail notifications. Everything shown is derived from live data — see useNotifications. */
+const NotificationsButton: React.FC<{ onNavigate: (v: View) => void }> = ({ onNavigate }) => {
+  const { user } = useAuth();
+  const { items, loading, count } = useNotifications(user ? { uid: user.uid, role: user.role, name: user.name } : null);
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    const audience = role === 'Admin' ? null : role.toLowerCase() + 's';
-    const unsub = firestoreService.getAnnouncements(audience, (data) => setAnnouncements(data.slice(0, 5)));
-    return () => unsub();
-  }, [role]);
-
-  const closeAll = () => { setNotifOpen(false); setAccountOpen(false); };
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   return (
-    <header className="h-16 flex items-center justify-between px-4 lg:px-8 bg-surface-light dark:bg-surface-dark border-b border-slate-200 dark:border-slate-800 shrink-0 relative">
-      <div className="flex items-center gap-4">
-        {onMenuClick && (
-          <button
-            onClick={onMenuClick}
-            className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <Icon name="menu" className="text-[24px]" />
-          </button>
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white"
+      >
+        <Icon name="notifications" className="text-[18px]" />
+        Notifications
+        {count > 0 && (
+          <span className="ml-auto bg-white text-primary text-[10.5px] font-bold px-[7px] py-px rounded-full">{count}</span>
         )}
-        <h2 className="text-base lg:text-lg font-semibold text-slate-800 dark:text-white truncate">Dashboard Overview</h2>
-      </div>
-      <div className="flex items-center gap-2 lg:gap-6">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <button
-              onClick={() => { setNotifOpen(!notifOpen); setAccountOpen(false); }}
-              className="relative p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              <Icon name="notifications" className="text-[24px]" />
-              {announcements.length > 0 && (
-                <span className="absolute top-2 right-2.5 size-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
-              )}
-            </button>
-            {notifOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={closeAll} />
-                <div className="absolute right-0 top-12 z-20 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">Recent Notices</p>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 bottom-full mb-2 w-[300px] max-h-[420px] overflow-y-auto z-50 rounded-panel bg-surface-light dark:bg-surface-dark shadow-panel ring-1 ring-slate-200 dark:ring-slate-700 p-2">
+          <p className="px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+            Needs your attention
+          </p>
+
+          {loading ? (
+            <p className="px-2.5 py-4 text-[11.5px] text-slate-400">Checking…</p>
+          ) : items.length === 0 ? (
+            <div className="px-2.5 py-5 text-center">
+              <Icon name="check_circle" className="text-[22px] text-success" />
+              <p className="mt-1.5 text-[12px] font-semibold text-slate-900 dark:text-white">You are all caught up</p>
+              <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">Nothing is waiting on you right now.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {items.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    if (n.view) onNavigate(n.view);
+                    setOpen(false);
+                  }}
+                  className={`text-left rounded-[13px] px-3 py-2.5 transition-colors ${TONE[n.tone].tint} hover:brightness-[0.98] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className={`size-[7px] rounded-full mt-1.5 shrink-0 ${TONE[n.tone].dot}`} />
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-slate-900 dark:text-white leading-snug">{n.title}</p>
+                      {n.body && <p className="mt-1 text-[10.5px] text-slate-600 dark:text-slate-400 leading-relaxed">{n.body}</p>}
+                    </div>
                   </div>
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                    {announcements.length === 0 && (
-                      <p className="p-4 text-xs text-slate-400 italic">No notices right now.</p>
-                    )}
-                    {announcements.map((a) => (
-                      <div key={a.id} className="p-4">
-                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{a.title}</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{a.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
-          <div className="relative">
-            <button
-              onClick={() => { setAccountOpen(!accountOpen); setNotifOpen(false); }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                <Icon name="account_circle" className="text-[16px]" />
-              </div>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Account</span>
-            </button>
-            {accountOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={closeAll} />
-                <div className="absolute right-0 top-12 z-20 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
-                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.name || role}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email || role}</p>
-                  </div>
-                  <button
-                    onClick={() => signOut()}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-                  >
-                    <Icon name="logout" className="text-lg" /> Sign Out
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Rail: React.FC<{
+  portal: string;
+  nav: NavEntry[];
+  currentView: View;
+  onNavigate: (v: View) => void;
+}> = ({ portal, nav, currentView, onNavigate }) => {
+  const { signOut } = useAuth();
+  return (
+    <aside className="hidden lg:flex w-64 shrink-0 bg-primary flex-col gap-[22px] px-3.5 pt-6 pb-5">
+      <div className="flex items-center gap-[11px] px-2">
+        <div className="size-9 rounded-[11px] bg-white flex items-center justify-center text-primary">
+          <Icon name="school" className="text-[20px]" />
+        </div>
+        <div className="flex flex-col gap-px min-w-0">
+          <span className="text-[15px] font-bold text-white tracking-[-0.02em]">EduManage</span>
+          <span className="text-[10px] font-medium text-white/60 uppercase tracking-[0.09em] truncate">{portal}</span>
         </div>
       </div>
-    </header>
+
+      <nav className="flex flex-col gap-[3px]">
+        {nav.map((e) => (
+          <RailItem key={e.view} entry={e} active={isActive(e, currentView)} onClick={() => onNavigate(e.view)} />
+        ))}
+      </nav>
+
+      <div className="h-px bg-white/[0.18] mx-2.5" />
+
+      <NotificationsButton onNavigate={onNavigate} />
+
+      <button
+        onClick={() => signOut()}
+        className="mt-auto w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors"
+      >
+        <Icon name="logout" className="text-[18px]" />
+        Sign out
+      </button>
+    </aside>
+  );
+};
+
+/* --- Mobile bottom tabs --------------------------------------------------- */
+
+const MobileTabs: React.FC<{ nav: NavEntry[]; currentView: View; onNavigate: (v: View) => void }> = ({
+  nav,
+  currentView,
+  onNavigate,
+}) => {
+  const tabs = nav.slice(0, 5);
+  return (
+    <nav className="lg:hidden shrink-0 bg-surface-light dark:bg-surface-dark border-t border-slate-100 dark:border-slate-800 flex px-1.5 pt-1 pb-2.5">
+      {tabs.map((e) => {
+        const on = isActive(e, currentView);
+        return (
+          <button
+            key={e.view}
+            onClick={() => onNavigate(e.view)}
+            aria-current={on ? 'page' : undefined}
+            className={`flex-1 min-h-14 flex flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors ${
+              on ? 'text-primary font-semibold' : 'text-slate-400 font-medium'
+            }`}
+          >
+            <Icon name={e.icon} className="text-[22px]" />
+            <span className="truncate max-w-full px-0.5">{e.label.split(' ')[0]}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+};
+
+/* --- Shell ---------------------------------------------------------------- */
+
+const AppLayout: React.FC<LayoutProps & { portal: string; nav: NavEntry[] }> = ({
+  children,
+  onNavigate,
+  currentView,
+  portal,
+  nav,
+}) => (
+  <div className="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display">
+    <Rail portal={portal} nav={nav} currentView={currentView} onNavigate={onNavigate} />
+    <div className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 overflow-y-auto">{children}</main>
+      <MobileTabs nav={nav} currentView={currentView} onNavigate={onNavigate} />
+    </div>
+  </div>
+);
+
+export const TeacherLayout: React.FC<LayoutProps> = (p) => (
+  <AppLayout {...p} portal="Teacher Portal" nav={TEACHER_NAV} />
+);
+export const AdminLayout: React.FC<LayoutProps> = (p) => <AppLayout {...p} portal="Admin Portal" nav={ADMIN_NAV} />;
+export const ParentLayout: React.FC<LayoutProps> = (p) => (
+  <AppLayout {...p} portal="Parent Portal" nav={PARENT_NAV} />
+);
+
+/* --- The two content shells ----------------------------------------------- */
+
+/** Registers, tables, forms. Full width — no right column. */
+export const WorkSurface: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="p-5 md:p-[26px] lg:px-[30px] flex flex-col gap-4 max-w-[1600px]">{children}</div>
+);
+
+/** Dashboards. Content plus the profile / calendar column. */
+export const Overview: React.FC<{ children: React.ReactNode; aside?: React.ReactNode }> = ({ children, aside }) => (
+  <div className="flex flex-col xl:flex-row max-w-[1600px]">
+    <div className="flex-1 min-w-0 p-5 md:p-[26px] lg:pl-[30px] flex flex-col gap-5">{children}</div>
+    {aside && (
+      <aside className="w-full xl:w-[312px] shrink-0 bg-surface-light dark:bg-surface-dark xl:border-l border-slate-100 dark:border-slate-800 p-5 md:p-[26px] flex flex-col gap-5">
+        {aside}
+      </aside>
+    )}
+  </div>
+);
+
+/* --- Right-column furniture ----------------------------------------------- */
+
+export const ProfileCard: React.FC<{ name: string; role: string; tint?: 'blue' | 'lilac' | 'peach' }> = ({
+  name,
+  role,
+  tint = 'blue',
+}) => (
+  <div className="flex flex-col items-center gap-2">
+    <Avatar name={name} tint={tint} size={74} online />
+    <div className="text-center">
+      <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">{name}</p>
+      <p className="mt-0.5 text-[11.5px] text-slate-500 dark:text-slate-400">{role}</p>
+    </div>
+  </div>
+);
+
+export type CalendarEvent = { date: string; type: 'exam' | 'event' | 'holiday' | 'fees' };
+
+const EVENT_STYLE: Record<CalendarEvent['type'], string> = {
+  exam: 'bg-tint-butter text-ink-butter font-semibold',
+  event: 'bg-tint-mint text-ink-mint font-semibold',
+  holiday: 'bg-tint-blush text-ink-blush font-semibold',
+  fees: 'bg-tint-blush text-ink-blush font-semibold',
+};
+
+/** Monday-start month grid. Real dates — no hardcoded September. */
+export const MiniCalendar: React.FC<{ events?: CalendarEvent[]; today?: Date }> = ({ events = [], today }) => {
+  const now = today ?? new Date();
+  const [cursor, setCursor] = React.useState(new Date(now.getFullYear(), now.getMonth(), 1));
+
+  const byDay = React.useMemo(() => {
+    const m = new Map<string, CalendarEvent['type']>();
+    for (const e of events) {
+      const d = new Date(e.date);
+      if (!Number.isNaN(d.getTime())) m.set(d.toDateString(), e.type);
+    }
+    return m;
+  }, [events]);
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const first = new Date(year, month, 1);
+  // getDay() is Sunday-based; shift so Monday is column 0.
+  const lead = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - lead);
+
+  const cells = Array.from({ length: 42 }, (_, i) => new Date(year, month, 1 - lead + i));
+  const weeks = cells.length / 7;
+  // Drop a trailing all-next-month week so short months do not render a dead row.
+  const visible = cells.slice(0, cells[35].getMonth() === month || weeks === 5 ? 42 : 35);
+
+  const step = (delta: number) => setCursor(new Date(year, month + delta, 1));
+
+  return (
+    <div className="bg-slate-50 dark:bg-slate-900/40 rounded-panel p-3.5 pb-3">
+      <div className="flex items-center justify-between px-1 pb-2.5">
+        <button onClick={() => step(-1)} aria-label="Previous month" className="text-slate-400 hover:text-slate-600 p-1">
+          <Icon name="chevron_left" className="text-[16px]" />
+        </button>
+        <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white">
+          {cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+        </span>
+        <button onClick={() => step(1)} aria-label="Next month" className="text-slate-400 hover:text-slate-600 p-1">
+          <Icon name="chevron_right" className="text-[16px]" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-0.5 justify-items-center">
+        {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d, i) => (
+          <span
+            key={d}
+            className={`text-[10px] font-semibold pb-1 ${i === 5 ? 'text-orange-500' : i === 6 ? 'text-danger' : 'text-slate-400'}`}
+          >
+            {d}
+          </span>
+        ))}
+        {visible.map((d) => {
+          const outside = d.getMonth() !== month;
+          const isToday = d.toDateString() === now.toDateString();
+          const evt = byDay.get(d.toDateString());
+          const weekend = d.getDay() === 0 || d.getDay() === 6;
+          return (
+            <span
+              key={d.toISOString()}
+              className={`text-[11.5px] font-medium size-7 flex items-center justify-center rounded-lg ${
+                outside
+                  ? 'text-slate-300 dark:text-slate-700'
+                  : isToday
+                    ? 'bg-primary text-white font-semibold'
+                    : evt
+                      ? EVENT_STYLE[evt]
+                      : weekend
+                        ? d.getDay() === 0
+                          ? 'text-danger'
+                          : 'text-orange-500'
+                        : 'text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              {d.getDate()}
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-3 px-1 pt-3 mt-2 border-t border-slate-200 dark:border-slate-800">
+        {(
+          [
+            ['exam', 'Exam', 'bg-warning'],
+            ['event', 'Event', 'bg-event'],
+            ['holiday', 'Holiday', 'bg-holiday'],
+          ] as const
+        ).map(([k, label, dot]) => (
+          <span key={k} className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+            <span className={`size-[7px] rounded-full ${dot}`} />
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 };

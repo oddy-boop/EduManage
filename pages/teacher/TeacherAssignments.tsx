@@ -1,63 +1,69 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
-import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { useAuth } from '../../lib/AuthContext';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Badge, Button, Card, Chip, EmptyState, Field, InlineNote, Input, NoResults, PageHeader, SkeletonTable, Textarea,
+} from '../../components/ui';
 
 export const TeacherAssignments: React.FC = () => {
   const { user } = useAuth();
   const assignedClasses = user?.assignedClasses && user.assignedClasses.length > 0 ? user.assignedClasses : ['Unassigned'];
+
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    classId: assignedClasses[0],
-    dueDate: ''
-  });
+  const [formData, setFormData] = useState({ title: '', description: '', classId: assignedClasses[0], dueDate: '' });
+  const [touched, setTouched] = useState(false);
+  const [filterClass, setFilterClass] = useState('All');
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   useEffect(() => {
-    // Assignments are stored per-class; aggregate across every class this teacher is assigned to.
-    const unsubs = assignedClasses.map(classId =>
+    // Assignments are stored per-class; aggregate across every class this teacher has.
+    const unsubs = assignedClasses.map((classId) =>
       firestoreService.getAssignments(classId, (data) => {
-        setAssignments(prev => {
-          const rest = prev.filter(a => a.classId !== classId);
-          return [...rest, ...data].sort((a, b) => (a.dueDate < b.dueDate ? 1 : -1));
+        setAssignments((prev) => {
+          const rest = prev.filter((a) => a.classId !== classId);
+          return [...rest, ...data];
         });
-      })
+      }),
     );
-    return () => unsubs.forEach(unsub => unsub());
-  }, [JSON.stringify(assignedClasses)]);
+    return () => unsubs.forEach((u) => u());
+  }, [assignedClasses.join(',')]);
 
   const resetForm = () => {
     setEditingId(null);
     setFormData({ title: '', description: '', classId: assignedClasses[0], dueDate: '' });
+    setTouched(false);
   };
 
-  const handlePublish = async () => {
-    if (!formData.title || !formData.dueDate) {
-      alert("Please fill in the title and due date.");
-      return;
-    }
+  const titleMissing = touched && !formData.title.trim();
+  const dueMissing = touched && !formData.dueDate;
 
+  const handlePublish = async () => {
+    setTouched(true);
+    setStatus(null);
+    if (!formData.title.trim() || !formData.dueDate) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
       if (editingId) {
         await firestoreService.updateAssignment(editingId, formData);
-        alert("Assignment updated successfully!");
+        setStatus({ tone: 'ok', text: 'Assignment updated.' });
       } else {
         await firestoreService.createAssignment({
           ...formData,
           teacherId: user?.uid || 'anonymous',
           status: 'published',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
-        alert("Assignment published successfully!");
+        setStatus({ tone: 'ok', text: 'Assignment published to the class.' });
       }
       resetForm();
     } catch (error) {
-      console.error("Failed to publish:", error);
-      alert("Failed to publish assignment.");
+      console.error(error);
+      setStatus({ tone: 'bad', text: 'Could not save that. Your text is still here — try again.' });
     } finally {
       setLoading(false);
     }
@@ -66,190 +72,187 @@ export const TeacherAssignments: React.FC = () => {
   const handleEdit = (asgn: any) => {
     setEditingId(asgn.id);
     setFormData({
-      title: asgn.title,
+      title: asgn.title || '',
       description: asgn.description || '',
       classId: asgn.classId,
-      dueDate: asgn.dueDate ? new Date(asgn.dueDate).toISOString().split('T')[0] : ''
+      dueDate: asgn.dueDate ? String(asgn.dueDate).slice(0, 10) : '',
     });
+    setTouched(false);
+    setStatus(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this assignment?")) return;
+  const handleDelete = async (id: string, title: string) => {
+    if (!window.confirm(`Delete "${title}"? Parents and students lose sight of it immediately.`)) return;
+    setStatus(null);
     try {
       await firestoreService.deleteAssignment(id);
+      setAssignments((prev) => prev.filter((a) => a.id !== id));
       if (editingId === id) resetForm();
+      setStatus({ tone: 'ok', text: 'Assignment deleted.' });
     } catch (error) {
-      alert("Failed to delete assignment.");
+      console.error(error);
+      setStatus({ tone: 'bad', text: 'Could not delete that assignment.' });
     }
   };
 
+  const sorted = useMemo(
+    () =>
+      [...assignments]
+        .filter((a) => filterClass === 'All' || a.classId === filterClass)
+        .sort((a, b) => new Date(b.dueDate || 0).getTime() - new Date(a.dueDate || 0).getTime()),
+    [assignments, filterClass],
+  );
+
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark">
-      {/* Top Navigation */}
-      <div className="h-16 px-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
-        <div>
-           <div className="flex items-center gap-2 text-xs text-slate-500">
-               <span className="uppercase font-bold tracking-wider text-primary">EduPortal</span>
-               <span>|</span>
-               <span className="font-semibold">Teacher Dashboard</span>
-           </div>
-           <h1 className="text-lg font-bold text-slate-900 dark:text-white leading-none mt-1">Assignment Management</h1>
-        </div>
-        
-        <div className="flex items-center gap-3">
-           <div className="size-8 rounded-full bg-slate-200 overflow-hidden border border-slate-200">
-              <img src={user?.avatar || 'https://picsum.photos/seed/teacher/200'} alt="" />
-           </div>
+    <WorkSurface>
+      <PageHeader
+        title="Assignments"
+        subtitle={`Across ${assignedClasses.length} class${assignedClasses.length === 1 ? '' : 'es'}`}
+        actions={
+          status && (
+            <span className={`text-[11.5px] flex items-center gap-1.5 ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+              <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+              {status.text}
+            </span>
+          )
+        }
+      />
+
+      <div className="grid gap-4 lg:grid-cols-[420px_minmax(0,1fr)]">
+        <Card className="flex flex-col gap-4 h-fit">
+          <div className="flex items-center justify-between">
+            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">
+              {editingId ? 'Edit assignment' : 'New assignment'}
+            </p>
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="text-[11.5px] font-semibold text-slate-500 hover:text-primary rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Cancel edit
+              </button>
+            )}
+          </div>
+
+          <Field label="Title" error={titleMissing ? 'Give the assignment a title.' : undefined}>
+            <Input
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              placeholder="e.g. Algebra worksheet 4"
+              invalid={titleMissing}
+            />
+          </Field>
+
+          <Field label="Class">
+            <div className="flex flex-wrap gap-2">
+              {assignedClasses.map((c) => (
+                <Chip key={c} active={formData.classId === c} onClick={() => setFormData({ ...formData, classId: c })}>
+                  {c}
+                </Chip>
+              ))}
+            </div>
+          </Field>
+
+          <Field label="Due date" error={dueMissing ? 'Pick a due date.' : undefined}>
+            <Input
+              type="date"
+              value={formData.dueDate}
+              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+              invalid={dueMissing}
+            />
+          </Field>
+
+          <Field label="Instructions" hint="Shown to parents on their portal.">
+            <Textarea
+              rows={5}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="What should students do, and what should they bring?"
+            />
+          </Field>
+
+          <Button icon={editingId ? 'save' : 'add'} block loading={loading} onClick={handlePublish}>
+            {editingId ? 'Save changes' : 'Publish assignment'}
+          </Button>
+        </Card>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip active={filterClass === 'All'} onClick={() => setFilterClass('All')}>
+              All ({assignments.length})
+            </Chip>
+            {assignedClasses.map((c) => (
+              <Chip key={c} active={filterClass === c} onClick={() => setFilterClass(c)}>
+                {c}
+              </Chip>
+            ))}
+          </div>
+
+          {assignments.length === 0 ? (
+            <EmptyState
+              icon="assignment"
+              title="No assignments yet"
+              body="Anything you publish shows up here and on the parent portal for that class."
+            />
+          ) : sorted.length === 0 ? (
+            <NoResults title={`Nothing set for ${filterClass}`} onClear={() => setFilterClass('All')} clearLabel="Show all classes" />
+          ) : (
+            sorted.map((a) => {
+              const due = a.dueDate ? new Date(a.dueDate) : null;
+              const overdue = due ? due.getTime() < Date.now() : false;
+              return (
+                <Card key={a.id} className="flex items-start gap-3.5">
+                  <div
+                    className={`size-[42px] rounded-[13px] flex items-center justify-center shrink-0 ${
+                      overdue ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : 'bg-tint-blue text-ink-blue'
+                    }`}
+                  >
+                    <Icon name="assignment" className="text-[20px]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <p className="text-[13.5px] font-semibold text-slate-900 dark:text-white">{a.title}</p>
+                      <Badge tone="blue">{a.classId}</Badge>
+                      {overdue && <Badge tone="plain">Past due</Badge>}
+                    </div>
+                    {a.description && (
+                      <p className="mt-1.5 text-[11.5px] leading-relaxed text-slate-500 line-clamp-2">{a.description}</p>
+                    )}
+                    <p className="mt-1.5 text-[11px] text-slate-400">
+                      {due ? `Due ${due.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}` : 'No due date'}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(a)}
+                      aria-label={`Edit "${a.title}"`}
+                      className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-primary transition-colors flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      <Icon name="edit" className="text-[16px]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(a.id, a.title)}
+                      aria-label={`Delete "${a.title}"`}
+                      className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger hover:bg-tint-blush transition-colors flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      <Icon name="delete" className="text-[16px]" />
+                    </button>
+                  </div>
+                </Card>
+              );
+            })
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 max-w-7xl mx-auto w-full">
-         <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
-             <span>Assignments</span>
-             <Icon name="chevron_right" className="text-xs" />
-             <span className="font-bold text-slate-900 dark:text-white">Create New</span>
-         </div>
-
-         <div className="flex justify-between items-end mb-6">
-             <div>
-                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Publish Assignment</h2>
-                 <p className="text-slate-500 mt-1">Configure and share classroom tasks with students and parents.</p>
-             </div>
-         </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-             {/* Left Column: Form */}
-             <div className="lg:col-span-2 space-y-8">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 space-y-6">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="size-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                            <Icon name={editingId ? 'edit' : 'add'} />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-slate-900 dark:text-white">{editingId ? 'Edit Assignment' : 'Create New Assignment'}</h3>
-                            <p className="text-xs text-slate-500">Fill in the details to publish to students</p>
-                          </div>
-                        </div>
-                        {editingId && (
-                          <button onClick={resetForm} className="text-xs font-black text-slate-400 uppercase hover:text-slate-600">Cancel Edit</button>
-                        )}
-                      </div>
-
-                      <div>
-                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Assignment Title <span className="text-red-500">*</span></label>
-                          <input 
-                            type="text" 
-                            placeholder="e.g., The Industrial Revolution Analysis" 
-                            value={formData.title}
-                            onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-primary focus:border-primary" 
-                          />
-                      </div>
-
-                      <div>
-                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Instructions & Requirements</label>
-                          <textarea 
-                            rows={8} 
-                            value={formData.description}
-                            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-primary focus:border-primary resize-none text-sm" 
-                            placeholder="Detailed description of the assignment tasks..."
-                          ></textarea>
-                      </div>
-                  </div>
-
-                  {/* Recently Published List */}
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                        <h3 className="font-bold text-slate-900 dark:text-white">Published Assignments</h3>
-                        <span className="text-xs font-bold text-slate-400 uppercase">{assignments.length} Total</span>
-                    </div>
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {assignments.length > 0 ? assignments.map((asgn, i) => (
-                           <div key={asgn.id || i} className="p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                              <div className="flex items-center gap-4">
-                                  <div className="size-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 flex items-center justify-center">
-                                      <Icon name="assignment" />
-                                  </div>
-                                  <div>
-                                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{asgn.title}</p>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Due {asgn.dueDate ? new Date(asgn.dueDate).toLocaleDateString() : 'N/A'} • Class {asgn.classId}</p>
-                                  </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => handleEdit(asgn)}
-                                    className="p-2 text-slate-400 hover:text-primary transition-colors"
-                                  >
-                                      <Icon name="edit" className="text-base" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(asgn.id)}
-                                    className="p-2 text-slate-400 hover:text-rose-600 transition-colors"
-                                  >
-                                      <Icon name="delete" className="text-base" />
-                                  </button>
-                              </div>
-                           </div>
-                        )) : (
-                          <div className="p-12 text-center">
-                              <p className="text-sm text-slate-500 italic">No assignments published for this class yet.</p>
-                          </div>
-                        )}
-                    </div>
-                  </div>
-             </div>
-
-             {/* Right Column: Settings */}
-             <div className="space-y-6">
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
-                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Publishing Settings</h3>
-                      
-                      <div className="space-y-4">
-                          <div>
-                              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 text-[10px]">TARGET CLASS</label>
-                              <select
-                                value={formData.classId}
-                                onChange={(e) => setFormData(prev => ({ ...prev, classId: e.target.value }))}
-                                className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold"
-                              >
-                                  {assignedClasses.map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                  ))}
-                              </select>
-                          </div>
-                          
-                          <div>
-                              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 text-[10px]">SUBMISSION DEADLINE</label>
-                              <input 
-                                type="date" 
-                                value={formData.dueDate}
-                                onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                                className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold" 
-                              />
-                          </div>
-
-                          <button
-                            onClick={handlePublish}
-                            disabled={loading}
-                            className="w-full py-3 bg-primary text-white font-bold rounded-lg shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
-                          >
-                              {loading ? (editingId ? 'Saving...' : 'Publishing...') : (editingId ? 'Save Changes' : 'Publish Assignment')}
-                              <Icon name={loading ? 'sync' : editingId ? 'save' : 'send'} className={`text-sm ${loading ? 'animate-spin' : ''}`} />
-                          </button>
-                      </div>
-                  </div>
-
-                  <div className="bg-primary text-white rounded-xl p-6 shadow-lg">
-                      <h3 className="text-sm font-bold uppercase tracking-wider mb-2 opacity-80">Class Communication</h3>
-                      <p className="text-xs opacity-70 italic leading-relaxed">
-                          Assignments published here will be instantly visible on the Parent Portal for students and guardians.
-                      </p>
-                  </div>
-             </div>
-         </div>
-      </div>
-    </div>
+      <InlineNote icon="info">
+        Assignments are visible to parents as soon as they are published. Work is handed in at school — there is no
+        submission upload.
+      </InlineNote>
+    </WorkSurface>
   );
 };

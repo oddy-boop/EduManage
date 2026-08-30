@@ -2,47 +2,96 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { useAuth } from '../../lib/AuthContext';
 import { firestoreService } from '../../lib/services';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Avatar, Badge, Button, Card, Chip, EmptyState, InlineNote, Input, PageHeader, Select, SkeletonTable,
+} from '../../components/ui';
+import { CA_MAX, EXAM_MAX, SUBJECT_MAX, clampExam, examError, gradeFor } from '../../lib/grading';
 
 interface CaScore {
   caScore: number;
   entryCount: number;
 }
 
+const TERMS = ['Term 1', 'Term 2', 'Term 3'];
+
 export const TeacherReportEntry: React.FC = () => {
   const { user } = useAuth();
   const assignedClasses = user?.assignedClasses && user.assignedClasses.length > 0 ? user.assignedClasses : ['Unassigned'];
   const [students, setStudents] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
-  const [grades, setGrades] = useState<Record<string, { exam: number, remarks: string }>>({});
+  const [grades, setGrades] = useState<Record<string, { exam: number; remarks: string }>>({});
   const [caScores, setCaScores] = useState<Record<string, CaScore>>({});
   const [existingReports, setExistingReports] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [activeClass, setActiveClass] = useState(assignedClasses[0]);
+  // Seeded empty on purpose: the real list arrives from teacher_assignments below.
+  // Seeding from user.assignedClasses cached the class picked at LOGIN, so an admin
+  // changing assignments left this pointing at a class no longer in the chip list —
+  // no chip highlighted, no subjects, and the screen looked locked to one class.
+  const [activeClass, setActiveClass] = useState('');
   const [currentTerm, setCurrentTerm] = useState('Term 2');
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const [assignments, setAssignments] = useState<{ classId: string; courseCode: string; subject: string }[]>([]);
 
-  // A Teacher's assignedCourses stores subject codes (e.g. "MATH101"); the report keys on the
-  // human-readable subject name (e.g. "Mathematics"), matching how reports.grades is keyed elsewhere.
-  const mySubjects = useMemo(() => {
-    const codes: string[] = user?.assignedCourses || [];
-    return codes.map(code => courses.find(c => c.code === code)?.name || code).filter(Boolean);
-  }, [user, courses]);
+  // Subjects are per class, not global. A teacher who takes English in Grade 7 and
+  // Maths in Grade 9 must only ever see English while Grade 7 is selected — offering
+  // both everywhere is what used to make a class expect a subject nobody taught there.
+  const mySubjects = useMemo(
+    () => [...new Set(assignments.filter((a) => a.classId === activeClass).map((a) => a.subject))].sort(),
+    [assignments, activeClass],
+  );
+
+  /** Classes this teacher actually takes a subject in. */
+  const myClasses = useMemo(() => {
+    const fromAssignments = [...new Set(assignments.map((a) => a.classId))];
+    return fromAssignments.length ? fromAssignments.sort() : assignedClasses;
+  }, [assignments, assignedClasses]);
   const [activeSubject, setActiveSubject] = useState('');
 
   useEffect(() => {
-    if (!activeSubject && mySubjects.length > 0) setActiveSubject(mySubjects[0]);
+    firestoreService
+      .getTeacherAssignments()
+      .then((rows) => {
+        setAssignments(rows);
+        // Nothing to teach means no class will ever be selected, and the students
+        // fetch below never runs — so release the skeleton here or it spins forever.
+        if (rows.length === 0) setLoading(false);
+      })
+      .catch(() => {
+        setAssignments([]);
+        setLoading(false);
+      });
+  }, [user?.uid]);
+
+  // Keep the chosen class valid — mirrors the subject reconciliation below.
+  useEffect(() => {
+    if (myClasses.length === 0) return;
+    if (!activeClass || !myClasses.includes(activeClass)) setActiveClass(myClasses[0]);
+  }, [myClasses, activeClass]);
+
+  // Keep the chosen subject valid for the chosen class.
+  useEffect(() => {
+    if (mySubjects.length === 0) {
+      if (activeSubject) setActiveSubject('');
+      return;
+    }
+    if (!activeSubject || !mySubjects.includes(activeSubject)) setActiveSubject(mySubjects[0]);
   }, [mySubjects, activeSubject]);
 
   useEffect(() => {
-    firestoreService.getSystemSettings()
-      .then(settings => { if (settings?.current_term) setCurrentTerm(settings.current_term); })
+    firestoreService
+      .getSystemSettings()
+      .then((settings) => {
+        if (settings?.current_term) setCurrentTerm(settings.current_term);
+      })
       .catch(() => {});
     firestoreService.getCourses((data) => setCourses(data));
   }, []);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid || !activeClass) return;
     const unsub = firestoreService.getStudentsForClass(activeClass, (data) => {
       setStudents(data);
       setLoading(false);
@@ -50,8 +99,8 @@ export const TeacherReportEntry: React.FC = () => {
     return () => unsub();
   }, [user, activeClass]);
 
-  // Load this teacher's existing subject_reports for this class/subject/term — prefills the
-  // exam score/remarks already saved, and tells us which rows are locked (already submitted).
+  // Existing subject_reports for this class/subject/term — prefills what is saved
+  // and tells us which rows are locked (already submitted).
   useEffect(() => {
     if (!activeClass || !activeSubject || !currentTerm) return;
     const unsub = firestoreService.getSubjectReports({ classId: activeClass, subject: activeSubject, term: currentTerm }, (data) => {
@@ -59,12 +108,12 @@ export const TeacherReportEntry: React.FC = () => {
       const gradeMap: Record<string, any> = {};
       data.forEach((r: any) => {
         map[r.studentId] = r;
-        gradeMap[r.studentId] = { exam: r.examScore, remarks: r.remarks || '' };
+        gradeMap[r.studentId] = { exam: Number(r.examScore) || 0, remarks: r.remarks || '' };
       });
       setExistingReports(map);
-      setGrades(prev => {
+      setGrades((prev) => {
         const next = { ...prev };
-        students.forEach(s => {
+        students.forEach((s) => {
           next[s.id] = gradeMap[s.id] || { exam: 0, remarks: '' };
         });
         return next;
@@ -73,271 +122,357 @@ export const TeacherReportEntry: React.FC = () => {
     return () => unsub();
   }, [activeClass, activeSubject, currentTerm, students]);
 
-  // CA score is auto-computed from the Assessment Book, not typed in here.
+  // CA is auto-computed from the Assessment Book, never typed in here.
   useEffect(() => {
-    if (students.length === 0) return;
+    if (students.length === 0 || !activeClass) return;
     let cancelled = false;
-    Promise.all(students.map(s =>
-      firestoreService.getAssessmentSummary(s.id, activeClass, currentTerm, 40)
-        .then(summary => [s.id, summary] as const)
-        .catch(() => [s.id, { caScore: 0, entryCount: 0 }] as const)
-    )).then(results => {
+    Promise.all(
+      students.map((s) =>
+        firestoreService
+          .getAssessmentSummary(s.id, activeClass, currentTerm, CA_MAX)
+          .then((summary) => [s.id, summary] as const)
+          .catch(() => [s.id, { caScore: 0, entryCount: 0 }] as const),
+      ),
+    ).then((results) => {
       if (cancelled) return;
       const map: Record<string, CaScore> = {};
-      results.forEach(([id, summary]) => { map[id] = summary; });
+      results.forEach(([id, summary]) => {
+        map[id] = summary;
+      });
       setCaScores(map);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [students, activeClass, currentTerm]);
 
   const isLocked = (studentId: string) => existingReports[studentId]?.status === 'submitted';
 
   const handleGradeChange = (studentId: string, field: 'exam' | 'remarks', value: any) => {
     if (isLocked(studentId)) return;
-    setGrades(prev => ({
+    setStatus(null);
+    setGrades((prev) => ({
       ...prev,
       [studentId]: {
         ...prev[studentId],
-        [field]: field === 'remarks' ? value : Number(value) || 0
-      }
+        // Was `Number(value) || 0` — an out-of-range mark was stored as typed
+        // because `max` on the input only styles, it does not block.
+        [field]: field === 'remarks' ? value : clampExam(value),
+      },
     }));
   };
 
-  const calculateGrade = (total: number) => {
-    if (total >= 90) return 'A+';
-    if (total >= 80) return 'A';
-    if (total >= 70) return 'B';
-    if (total >= 60) return 'C';
-    if (total >= 50) return 'D';
-    return 'F';
-  };
+  /** How many assessments the best-covered student has — our stand-in for "expected". */
+  const expectedEntries = useMemo(
+    () => Math.max(0, ...students.map((s) => caScores[s.id]?.entryCount ?? 0)),
+    [students, caScores],
+  );
 
-  const saveDraft = async () => {
-    try {
-      setSaving(true);
-      await Promise.all(students.filter(s => !isLocked(s.id)).map(student => {
-        const studentGrades = grades[student.id] || { exam: 0, remarks: '' };
-        return firestoreService.saveSubjectReport({
-          studentId: student.id,
+  const rows = useMemo(
+    () =>
+      students.map((s) => {
+        const ca = Number(caScores[s.id]?.caScore ?? 0) || 0;
+        const entryCount = caScores[s.id]?.entryCount ?? 0;
+        const exam = Number(grades[s.id]?.exam ?? 0) || 0;
+        const total = ca + exam;
+        return {
+          student: s,
+          ca,
+          entryCount,
+          exam,
+          total,
+          band: gradeFor(total),
+          error: examError(exam),
+          locked: isLocked(s.id),
+          noCa: entryCount === 0,
+          partialCa: entryCount > 0 && expectedEntries > 0 && entryCount < expectedEntries,
+        };
+      }),
+    [students, caScores, grades, existingReports, expectedEntries],
+  );
+
+  const editable = rows.filter((r) => !r.locked);
+  const blocking = editable.filter((r) => r.error).length;
+  const entered = editable.filter((r) => r.exam > 0).length;
+  const allLocked = students.length > 0 && rows.every((r) => r.locked);
+
+  const persist = () =>
+    Promise.all(
+      editable.map((r) =>
+        firestoreService.saveSubjectReport({
+          studentId: r.student.id,
           classId: activeClass,
           term: currentTerm,
           subject: activeSubject,
-          caScore: caScores[student.id]?.caScore || 0,
-          examScore: studentGrades.exam,
-          remarks: studentGrades.remarks
-        });
-      }));
-      alert("Draft saved.");
+          caScore: r.ca,
+          examScore: r.exam,
+          remarks: grades[r.student.id]?.remarks ?? '',
+        }),
+      ),
+    );
+
+  const saveDraft = async () => {
+    setSaving(true);
+    setStatus(null);
+    try {
+      await persist();
+      setStatus({ tone: 'ok', text: `Draft saved for ${activeSubject}.` });
     } catch (error) {
-      console.error("Save failed:", error);
-      alert("Failed to save draft.");
+      console.error('Save failed:', error);
+      setStatus({ tone: 'bad', text: 'Could not save. Your entries are still on screen — try again.' });
     } finally {
       setSaving(false);
     }
   };
 
   const submitToClassTeacher = async () => {
-    if (!window.confirm(`Submit ${activeSubject} scores for ${activeClass} (${currentTerm})? You won't be able to edit them afterward unless an Admin reopens them.`)) return;
+    if (blocking > 0) return;
+    if (
+      !window.confirm(
+        `Submit ${activeSubject} scores for ${activeClass} (${currentTerm})? You won't be able to edit them afterward unless an Admin reopens them.`,
+      )
+    )
+      return;
+    setSubmitting(true);
+    setStatus(null);
     try {
-      setSubmitting(true);
-      // Save the latest values first, then lock the whole batch.
-      await Promise.all(students.filter(s => !isLocked(s.id)).map(student => {
-        const studentGrades = grades[student.id] || { exam: 0, remarks: '' };
-        return firestoreService.saveSubjectReport({
-          studentId: student.id,
-          classId: activeClass,
-          term: currentTerm,
-          subject: activeSubject,
-          caScore: caScores[student.id]?.caScore || 0,
-          examScore: studentGrades.exam,
-          remarks: studentGrades.remarks
-        });
-      }));
+      await persist();
       await firestoreService.submitSubjectReports(activeClass, activeSubject, currentTerm);
-      alert(`${activeSubject} scores submitted to the Class Teacher.`);
+      setStatus({ tone: 'ok', text: `${activeSubject} scores submitted to the class teacher.` });
     } catch (error) {
-      console.error("Submission failed:", error);
-      alert("Failed to submit. Please try again.");
+      console.error('Submission failed:', error);
+      setStatus({ tone: 'bad', text: 'Submission failed. Nothing was locked — try again.' });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const allLocked = students.length > 0 && students.every(s => isLocked(s.id));
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-72 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={6} />
+      </WorkSurface>
     );
   }
 
-  if (mySubjects.length === 0) {
+  if (assignments.length === 0) {
     return (
-      <div className="p-12 text-center text-slate-400">
-        <Icon name="menu_book" className="text-6xl mb-4 mx-auto opacity-30" />
-        <p className="italic">You have no subjects assigned. Ask your Admin to assign courses to your profile under Registration.</p>
-      </div>
+      <WorkSurface>
+        <PageHeader title="Report Generation" />
+        <EmptyState
+          icon="menu_book"
+          title="You have no subjects assigned"
+          body="Ask your school administrator to assign you a subject in a class, under Registration."
+        />
+      </WorkSurface>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark">
-      {/* Header */}
-      <div className="px-8 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <span>Portal</span>
-            <span>/</span>
-            <span className="font-medium text-primary">Subject Report Entry</span>
-          </div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Report Entry</h1>
-          <p className="text-xs text-slate-500">CA (40%) is auto-computed from the Assessment Book &bull; enter Exam (60%) below &bull; {currentTerm}</p>
+    <WorkSurface>
+      <PageHeader
+        title="Report Generation"
+        subtitle={`Enter exam scores and remarks. Continuous assessment comes from your Assessment Book.`}
+      />
+
+      {/* Context bar */}
+      <Card className="flex flex-wrap items-center gap-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">Class</span>
+          {myClasses.map((c) => (
+            <Chip key={c} active={c === activeClass} onClick={() => setActiveClass(c)}>
+              {c}
+            </Chip>
+          ))}
         </div>
-        <div className="flex flex-wrap gap-3">
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-            {assignedClasses.map(cls => (
-              <button
-                key={cls}
-                onClick={() => setActiveClass(cls)}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                  activeClass === cls ? 'bg-white dark:bg-slate-700 shadow-sm text-primary' : 'text-slate-500'
-                }`}
-              >
-                {cls}
-              </button>
+        <span className="hidden md:block w-px h-6 bg-slate-200 dark:bg-slate-700" />
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">Subject</span>
+          {mySubjects.map((s) => (
+            <Chip key={s} active={s === activeSubject} onClick={() => setActiveSubject(s)}>
+              {s}
+            </Chip>
+          ))}
+        </div>
+        <span className="hidden md:block w-px h-6 bg-slate-200 dark:bg-slate-700" />
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">Term</span>
+          <Select value={currentTerm} onChange={(e) => setCurrentTerm(e.target.value)} className="h-8 text-xs">
+            {TERMS.map((t) => (
+              <option key={t}>{t}</option>
             ))}
-          </div>
-          <select
-            value={activeSubject}
-            onChange={(e) => setActiveSubject(e.target.value)}
-            className="px-3 py-2 text-xs font-bold border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 outline-none focus:ring-primary"
-          >
-            {mySubjects.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          </Select>
         </div>
-      </div>
+      </Card>
+
+      {mySubjects.length === 0 ? (
+        <EmptyState
+          icon="menu_book"
+          title={`You do not teach a subject in ${activeClass}`}
+          body="Pick one of your other classes above, or ask an administrator to correct your assignments."
+        />
+      ) : null}
 
       {allLocked && (
-        <div className="mx-8 mt-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/40 p-3 rounded-xl flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-          <Icon name="lock" className="text-sm" /> {activeSubject} has been submitted to the Class Teacher for {activeClass} ({currentTerm}). Ask an Admin to reopen it if corrections are needed.
-        </div>
+        <InlineNote tone="mint" icon="lock">
+          Every row for {activeSubject} in {activeClass} has been submitted and locked. An administrator can reopen them.
+        </InlineNote>
       )}
 
-      {/* Main Table */}
-      <div className="flex-1 px-6 py-6 flex flex-col">
-         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex-1 flex flex-col overflow-hidden">
-             <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/20">
-                 <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                     <Icon name="table_chart" className="text-primary" /> Grade Entry Sheet &mdash; {activeSubject}
-                 </h3>
-             </div>
-
-             <div className="flex-1 overflow-auto">
-                 <table className="w-full text-left border-collapse">
-                     <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
-                         <tr>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-48">Student Name</th>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-32 text-center">CA (40, auto)</th>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-32 text-center">Exam (60)</th>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-24 text-center">Total</th>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase w-24 text-center">Grade</th>
-                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Remarks</th>
-                         </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                         {students.map((student) => {
-                             const studentGrades = grades[student.id] || { exam: 0, remarks: '' };
-                             const ca = caScores[student.id];
-                             const caValue = ca?.caScore || 0;
-                             const total = caValue + studentGrades.exam;
-                             const locked = isLocked(student.id);
-                             return (
-                               <tr key={student.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 group ${locked ? 'opacity-60' : ''}`}>
-                                   <td className="px-6 py-4">
-                                       <div className="flex items-center gap-3">
-                                           <div className="size-8 rounded-full bg-slate-200 overflow-hidden shrink-0">
-                                               <img src={`https://picsum.photos/seed/${student.id}/100`} alt="" />
-                                           </div>
-                                           <div className="flex flex-col">
-                                              <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm">{student.name}</span>
-                                              <span className="text-[10px] text-slate-400 font-mono uppercase flex items-center gap-1">
-                                                {student.id}
-                                                {locked && <Icon name="lock" className="text-[10px]" />}
-                                              </span>
-                                           </div>
-                                       </div>
-                                   </td>
-                                   <td className="px-6 py-3 text-center">
-                                       <div className="inline-flex flex-col items-center">
-                                         <span className="text-sm font-bold text-slate-900 dark:text-white">{caValue.toFixed(1)}</span>
-                                         <span className="text-[9px] text-slate-400 uppercase font-bold">
-                                           {ca && ca.entryCount > 0 ? `${ca.entryCount} entries` : 'No entries'}
-                                         </span>
-                                       </div>
-                                   </td>
-                                   <td className="px-6 py-3">
-                                       <input
-                                         type="number"
-                                         max={60}
-                                         disabled={locked}
-                                         value={studentGrades.exam}
-                                         onChange={(e) => handleGradeChange(student.id, 'exam', e.target.value)}
-                                         className="w-full text-center p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold disabled:cursor-not-allowed"
-                                       />
-                                   </td>
-                                   <td className="px-6 py-4 text-center font-black text-slate-900 dark:text-white">{total.toFixed(1)}</td>
-                                   <td className="px-6 py-4 text-center">
-                                       <span className={`inline-block w-8 text-center text-sm font-bold rounded ${total >= 70 ? 'text-green-600 bg-green-50' : 'text-slate-600 bg-slate-100'}`}>
-                                         {calculateGrade(total)}
-                                       </span>
-                                   </td>
-                                   <td className="px-6 py-3">
-                                       <input
-                                         type="text"
-                                         placeholder="Add remark..."
-                                         disabled={locked}
-                                         value={studentGrades.remarks}
-                                         onChange={(e) => handleGradeChange(student.id, 'remarks', e.target.value)}
-                                         className="w-full text-sm p-2 bg-transparent border-b border-dashed border-slate-300 focus:border-primary outline-none disabled:cursor-not-allowed"
-                                       />
-                                   </td>
-                               </tr>
-                             );
-                         })}
-                         {students.length === 0 && (
-                           <tr>
-                             <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">No students found for this class.</td>
-                           </tr>
-                         )}
-                     </tbody>
-                 </table>
-             </div>
-         </div>
-      </div>
-
-      <div className="px-8 py-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-4 text-xs text-slate-400 mr-auto">
-              <Icon name="history" /> This subject's scores merge with every other subject teacher's under the Class Teacher's review.
+      {mySubjects.length === 0 ? null : students.length === 0 ? (
+        <EmptyState icon="groups" title={`No students in ${activeClass}`} body="Students registered into this class will appear here." />
+      ) : (
+        <Card pad={false} className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[880px]">
+              <thead className="bg-slate-50 dark:bg-slate-900/40">
+                <tr className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+                  <th className="text-left px-5 py-3.5 w-10">#</th>
+                  <th className="text-left px-2 py-3.5">Student</th>
+                  <th className="text-right px-2 py-3.5 w-28">CA · auto ({CA_MAX})</th>
+                  <th className="text-right px-2 py-3.5 w-32">Exam ({EXAM_MAX})</th>
+                  <th className="text-right px-2 py-3.5 w-20">Total</th>
+                  <th className="text-center px-2 py-3.5 w-20">Grade</th>
+                  <th className="text-left px-2 py-3.5">Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const rowTint = r.locked
+                    ? 'bg-slate-50 dark:bg-slate-900/40'
+                    : r.error
+                      ? 'bg-tint-blush'
+                      : r.noCa || r.partialCa
+                        ? 'bg-tint-butter'
+                        : '';
+                  return (
+                    <tr key={r.student.id} className={`border-t border-slate-100 dark:border-slate-800 ${rowTint}`}>
+                      <td className="px-5 py-2.5 text-[11.5px] font-semibold text-slate-300">
+                        {String(i + 1).padStart(2, '0')}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={r.student.name} size={30} tint={r.locked ? 'plain' : 'blue'} />
+                          <span className={`text-[12.5px] font-medium ${r.locked ? 'text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                            {r.student.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2.5 text-right">
+                        <span className={`text-[12.5px] font-semibold ${r.noCa ? 'text-ink-butter' : 'text-slate-600 dark:text-slate-300'}`}>
+                          {r.noCa ? '—' : r.ca}
+                        </span>
+                        <span className={`block text-[10px] mt-px ${r.noCa || r.partialCa ? 'text-ink-butter' : 'text-slate-400'}`}>
+                          {r.noCa
+                            ? 'no assessments'
+                            : r.partialCa
+                              ? `${r.entryCount} of ${expectedEntries} entries`
+                              : `${r.entryCount} entr${r.entryCount === 1 ? 'y' : 'ies'}`}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2.5">
+                        {r.locked ? (
+                          <div className="h-[38px] rounded-[11px] bg-slate-100 dark:bg-slate-800 flex items-center justify-end px-3 text-[13px] font-semibold text-slate-400">
+                            {r.exam}
+                          </div>
+                        ) : (
+                          <Input
+                            type="number"
+                            min={0}
+                            max={EXAM_MAX}
+                            inputMode="numeric"
+                            value={r.exam}
+                            invalid={!!r.error}
+                            onChange={(e) => handleGradeChange(r.student.id, 'exam', e.target.value)}
+                            aria-label={`Exam score for ${r.student.name}`}
+                            className="h-[38px] w-full text-right font-semibold"
+                          />
+                        )}
+                      </td>
+                      <td className="px-2 py-2.5 text-right text-[13px] font-bold text-slate-900 dark:text-white">
+                        {r.error ? <span className="text-slate-300">—</span> : r.total}
+                      </td>
+                      <td className="px-2 py-2.5 text-center">
+                        {r.error || !r.band ? (
+                          <span className="text-xs text-slate-300">—</span>
+                        ) : (
+                          <Badge tone={r.band.tone}>{r.band.label}</Badge>
+                        )}
+                      </td>
+                      <td className="px-2 py-2.5 pr-5">
+                        {r.locked ? (
+                          <span className="flex items-center gap-1.5 text-[11.5px] text-slate-400">
+                            <Icon name="lock" className="text-[14px]" />
+                            Submitted · locked
+                          </span>
+                        ) : r.error ? (
+                          <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-blush">
+                            <Icon name="priority_high" className="text-[14px]" />
+                            {r.error}
+                          </span>
+                        ) : (
+                          <Input
+                            value={grades[r.student.id]?.remarks ?? ''}
+                            onChange={(e) => handleGradeChange(r.student.id, 'remarks', e.target.value)}
+                            placeholder="Add a remark"
+                            aria-label={`Remark for ${r.student.name}`}
+                            className="h-[38px] w-full"
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="flex gap-3">
-              <button
-                disabled={saving || submitting || allLocked}
-                onClick={saveDraft}
-                className="px-6 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg font-bold hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-2 disabled:opacity-50"
-              >
-                  {saving ? 'Saving...' : 'Save Draft'} <Icon name={saving ? 'sync' : 'save'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                disabled={saving || submitting || allLocked || students.length === 0}
-                onClick={submitToClassTeacher}
-                className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-50"
-              >
-                  {submitting ? 'Submitting...' : 'Submit to Class Teacher'} <Icon name={submitting ? 'sync' : 'send'} className={`text-sm ${submitting ? 'animate-spin' : ''}`} />
-              </button>
+
+          <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-32 h-[7px] rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full"
+                    style={{ width: `${editable.length ? (entered / editable.length) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="text-[11.5px] text-slate-500">
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {entered} of {editable.length}
+                  </span>{' '}
+                  entered
+                </span>
+              </div>
+              {blocking > 0 && (
+                <span className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink-blush">
+                  <Icon name="priority_high" className="text-[14px]" />
+                  {blocking} {blocking === 1 ? 'error blocks' : 'errors block'} submission
+                </span>
+              )}
+              {status && (
+                <span className={`flex items-center gap-1.5 text-[11.5px] ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+                  <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+                  {status.text}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2.5">
+              <Button variant="secondary" onClick={saveDraft} loading={saving} disabled={allLocked}>
+                Save draft
+              </Button>
+              <Button onClick={submitToClassTeacher} loading={submitting} disabled={allLocked || blocking > 0 || editable.length === 0}>
+                Submit for approval
+              </Button>
+            </div>
           </div>
-      </div>
-    </div>
+        </Card>
+      )}
+
+      <InlineNote icon="info">
+        Totals are out of {SUBJECT_MAX}. CA is derived from the Assessment Book and cannot be typed here. A partly-assessed
+        student is flagged but can still be submitted — an incomplete Assessment Book must not stall a whole class.
+      </InlineNote>
+    </WorkSurface>
   );
 };

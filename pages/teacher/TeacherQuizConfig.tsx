@@ -1,9 +1,13 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { View } from '../../types';
 import { firestoreService } from '../../lib/services';
 import { useAuth } from '../../lib/AuthContext';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Badge, Button, Card, Drawer, EmptyState, Field, InlineNote, Input, PageHeader, SkeletonTable, Select, Textarea,
+  type Tint,
+} from '../../components/ui';
 
 interface TeacherQuizConfigProps {
   onNavigate: (view: View) => void;
@@ -18,6 +22,17 @@ interface Question {
   points?: number;
 }
 
+const TYPES = ['Multiple Choice', 'True/False', 'Short Answer'];
+
+const TYPE_TONE: Record<string, Tint> = {
+  'Multiple Choice': 'blue',
+  'True/False': 'lilac',
+  'Short Answer': 'mint',
+};
+
+/** A question with no correct answer cannot be marked, so it must not ship. */
+const isMarkable = (q: Question) => !!q.text.trim() && !!String(q.correctAnswer ?? '').trim();
+
 export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate }) => {
   const { user } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -26,13 +41,14 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [quizTitle, setQuizTitle] = useState('New Assessment');
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
   useEffect(() => {
     if (!user?.uid) {
       setLoading(false);
       return;
     }
-    // Resume the teacher's most recent unpublished (draft) quiz, if any; otherwise start fresh.
+    // Resume the teacher's most recent unpublished (draft) quiz, if any.
     const unsub = firestoreService.onTeacherQuizzesChange(user.uid, (quizzes) => {
       const draft = quizzes.find((q: any) => !q.isPublished);
       if (draft) {
@@ -45,244 +61,356 @@ export const TeacherQuizConfig: React.FC<TeacherQuizConfigProps> = ({ onNavigate
     return () => unsub();
   }, [user?.uid]);
 
-  const handleUpdateQuestion = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingQuestion) return;
-    
-    if (editingQuestion.id.startsWith('temp-')) {
-       setQuestions([...questions, { ...editingQuestion, id: Math.random().toString(36).substr(2, 9) }]);
-    } else {
-       setQuestions(questions.map(q => q.id === editingQuestion.id ? editingQuestion : q));
-    }
-    setEditingQuestion(null);
-  };
+  const buildQuestionPayload = () =>
+    questions.map((q) => ({
+      id: q.id && !q.id.startsWith('temp-') ? q.id : Math.random().toString(36).substring(2, 11),
+      text: q.text,
+      type: q.type,
+      correctAnswer: q.correctAnswer,
+      options: q.options || [],
+      points: q.points || 1,
+    }));
 
-  const buildQuestionPayload = () => questions.map(q => ({
-    id: q.id && !q.id.startsWith('temp-') ? q.id : Math.random().toString(36).substr(2, 9),
-    text: q.text,
-    type: q.type,
-    correctAnswer: q.correctAnswer,
-    options: q.options || [],
-    points: q.points || 1
-  }));
+  const unmarkable = useMemo(() => questions.filter((q) => !isMarkable(q)), [questions]);
+  const totalPoints = questions.reduce((a, q) => a + (q.points || 1), 0);
 
-  const handleSaveDraft = async () => {
+  const save = async (publish: boolean) => {
     if (questions.length === 0) {
-      alert("Please add at least one question.");
+      setStatus({ tone: 'bad', text: 'Add at least one question first.' });
       return;
     }
+    if (publish && unmarkable.length > 0) {
+      setStatus({ tone: 'bad', text: `${unmarkable.length} question(s) have no correct answer set — they cannot be marked.` });
+      return;
+    }
+    setSaving(true);
+    setStatus(null);
     try {
-      setSaving(true);
       if (activeQuizId) {
-        await firestoreService.updateQuiz(activeQuizId, { title: quizTitle, questions: buildQuestionPayload() });
+        await firestoreService.updateQuiz(activeQuizId, {
+          title: quizTitle,
+          questions: buildQuestionPayload(),
+          ...(publish ? { isPublished: true } : {}),
+        });
       } else {
         const created = await firestoreService.createQuiz({
           title: quizTitle,
           teacherId: user?.uid,
+          classId: user?.assignedClasses?.[0],
           questions: buildQuestionPayload(),
-          isPublished: false
+          isPublished: publish,
         });
         setActiveQuizId(created.id);
       }
-      alert("Draft saved.");
+      if (publish) onNavigate(View.TEACHER_QUIZ_SHARE);
+      else setStatus({ tone: 'ok', text: 'Draft saved.' });
     } catch (error) {
-      console.error("Failed to save quiz draft:", error);
-      alert("Error saving draft.");
+      console.error(publish ? 'Failed to publish quiz:' : 'Failed to save quiz draft:', error);
+      setStatus({ tone: 'bad', text: publish ? 'Could not publish. Nothing was shared.' : 'Could not save the draft.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePublishQuiz = async () => {
-    if (questions.length === 0) {
-      alert("Please add at least one question.");
-      return;
-    }
-    try {
-      setSaving(true);
-      if (activeQuizId) {
-        await firestoreService.updateQuiz(activeQuizId, { title: quizTitle, questions: buildQuestionPayload(), isPublished: true });
-      } else {
-        const created = await firestoreService.createQuiz({
-          title: quizTitle,
-          teacherId: user?.uid,
-          questions: buildQuestionPayload(),
-          isPublished: true
-        });
-        setActiveQuizId(created.id);
-      }
-      alert("Quiz successfully published and synced with Student Dashboard.");
-      onNavigate(View.TEACHER_QUIZ_SHARE);
-    } catch (error) {
-      console.error("Failed to publish quiz:", error);
-      alert("Error publishing quiz.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const addManualQuestion = () => {
+  const addManualQuestion = () =>
     setEditingQuestion({
       id: `temp-${Date.now()}`,
       text: '',
       type: 'Multiple Choice',
       correctAnswer: '',
       options: ['', '', '', ''],
-      points: 1
+      points: 1,
     });
+
+  const handleUpdateQuestion = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingQuestion) return;
+    setQuestions((prev) => {
+      const exists = prev.some((q) => q.id === editingQuestion.id);
+      return exists ? prev.map((q) => (q.id === editingQuestion.id ? editingQuestion : q)) : [...prev, editingQuestion];
+    });
+    setEditingQuestion(null);
+    setStatus(null);
   };
+
+  const removeQuestion = (id: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== id));
+    if (editingQuestion?.id === id) setEditingQuestion(null);
+  };
+
+  const setOption = (idx: number, value: string) =>
+    setEditingQuestion((q) => {
+      if (!q) return q;
+      const options = [...(q.options || [])];
+      const previous = options[idx];
+      options[idx] = value;
+      // Keep the correct answer pointing at the option the teacher marked.
+      return { ...q, options, correctAnswer: q.correctAnswer === previous ? value : q.correctAnswer };
+    });
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-64 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={5} />
+      </WorkSurface>
     );
   }
 
-  return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto h-full flex flex-col relative">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Quiz Configuration</h1>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-            <Icon name="home" className="text-sm" /> 
-            <span>Dashboard</span>
-            <span>/</span>
-            <span className="font-medium text-primary">Setup</span>
-          </div>
-        </div>
-      </div>
+  const q = editingQuestion;
+  const isChoice = q?.type === 'Multiple Choice';
+  const isTrueFalse = q?.type === 'True/False';
 
-      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
-        <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-8 flex flex-col">
-          <div className="mb-6">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Quiz Title</label>
-            <input 
-              type="text" 
-              value={quizTitle}
-              onChange={(e) => setQuizTitle(e.target.value)}
-              className="w-full text-xl font-bold p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-primary outline-none"
+  return (
+    <WorkSurface>
+      <PageHeader
+        breadcrumb={
+          <div className="flex items-center gap-1.5 text-[11.5px] text-slate-400">
+            <span className="text-primary font-semibold">Setup</span>
+            <Icon name="chevron_right" className="text-[13px]" />
+            <span>Share</span>
+          </div>
+        }
+        title="Quiz Configuration"
+        actions={
+          <>
+            <Badge tone={activeQuizId ? 'peach' : 'plain'}>Draft · not visible to students</Badge>
+            <Button variant="secondary" loading={saving} onClick={() => save(false)}>
+              Save draft
+            </Button>
+            <Button icon="send" loading={saving} disabled={questions.length === 0 || unmarkable.length > 0} onClick={() => save(true)}>
+              Publish &amp; share
+            </Button>
+          </>
+        }
+      />
+
+      {status && (
+        <InlineNote tone={status.tone === 'ok' ? 'mint' : 'blush'} icon={status.tone === 'ok' ? 'check_circle' : 'priority_high'}>
+          {status.text}
+        </InlineNote>
+      )}
+
+      <Card className="flex flex-col md:flex-row gap-4">
+        <Field label="Quiz title" className="flex-[2]">
+          <Input value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} placeholder="e.g. Algebra — linear equations check" />
+        </Field>
+        <Field label="Class" className="flex-1">
+          <Input value={user?.assignedClasses?.[0] || 'Unassigned'} readOnly className="bg-slate-50 dark:bg-slate-900/40" />
+        </Field>
+        <Field label="Total points" className="w-32">
+          <Input value={totalPoints} readOnly className="bg-slate-50 dark:bg-slate-900/40 text-right font-semibold" />
+        </Field>
+      </Card>
+
+      <Card pad={false} className="flex flex-col">
+        <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+            Questions <span className="text-slate-400 font-medium">({questions.length})</span>
+          </p>
+          <Button variant="secondary" icon="add" onClick={addManualQuestion}>
+            Add question
+          </Button>
+        </div>
+
+        {questions.length === 0 ? (
+          <div className="px-5 pb-5">
+            <EmptyState
+              icon="quiz"
+              title="No questions yet"
+              body="Add a question and set which answer is correct. Marking happens on the server when a student submits."
+              action={<Button icon="add" onClick={addManualQuestion}>Add the first question</Button>}
             />
           </div>
-
-          <div className="flex-1 flex flex-col min-h-0 border-t border-slate-100 dark:border-slate-700 pt-6">
-             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Question List ({questions.length})</h3>
-                <button 
-                  onClick={addManualQuestion}
-                  className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg flex items-center gap-2 hover:bg-primary/90"
+        ) : (
+          <div className="px-3.5 pb-3 flex flex-col gap-1.5">
+            {questions.map((question, i) => {
+              const bad = !isMarkable(question);
+              return (
+                <div
+                  key={question.id}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-[14px] ${bad ? 'bg-tint-butter' : 'bg-slate-50 dark:bg-slate-900/40'}`}
                 >
-                  <Icon name="add" className="text-sm" /> Add Question
-                </button>
-             </div>
-
-             <div className="flex-1 overflow-y-auto space-y-3">
-                {questions.map((q, idx) => (
-                  <div key={q.id} className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between group">
-                    <div className="flex items-center gap-4">
-                      <span className="text-xs font-bold text-slate-400">#{idx + 1}</span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate max-w-md">{q.text || <span className="italic opacity-50">Untitled question</span>}</p>
-                        <span className="text-[10px] font-bold uppercase text-primary bg-primary/10 px-2 py-0.5 rounded mt-1 inline-block">{q.type}</span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setEditingQuestion(q)}
-                      className="size-8 rounded-lg text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-primary flex items-center justify-center transition-colors"
+                  <span
+                    className={`size-[22px] rounded-[7px] text-[10.5px] font-bold flex items-center justify-center shrink-0 ${
+                      bad ? 'bg-white text-ink-butter' : 'bg-white dark:bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <p
+                    className={`flex-1 min-w-0 truncate text-[12.5px] ${
+                      question.text ? 'font-medium text-slate-900 dark:text-white' : 'italic text-ink-butter'
+                    }`}
+                  >
+                    {question.text || 'Untitled question'}
+                  </p>
+                  {bad && <Badge tone="butter">No answer set</Badge>}
+                  <Badge tone={TYPE_TONE[question.type] ?? 'plain'}>{question.type}</Badge>
+                  <span className="text-[11px] text-slate-400 shrink-0 w-10 text-right">{question.points || 1} pt</span>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingQuestion(question)}
+                      aria-label={`Edit question ${i + 1}`}
+                      className="size-7 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-primary flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
-                      <Icon name="edit" className="text-sm" />
+                      <Icon name="edit" className="text-[14px]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeQuestion(question.id)}
+                      aria-label={`Delete question ${i + 1}`}
+                      className="size-7 rounded-lg bg-white dark:bg-slate-800 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    >
+                      <Icon name="delete" className="text-[14px]" />
                     </button>
                   </div>
-                ))}
-                {questions.length === 0 && (
-                  <div className="h-32 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400">
-                    <Icon name="quiz" className="text-3xl mb-2 opacity-20" />
-                    <p className="text-sm font-medium">No questions added yet.</p>
-                  </div>
-                )}
-             </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
 
-        <div className="w-full lg:w-80 space-y-6">
-           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Quiz Status</h3>
-              <div className="flex items-center gap-2 mb-6">
-                <span className={`size-2 rounded-full ${activeQuizId ? 'bg-emerald-400' : 'bg-slate-300'} animate-pulse`}></span>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{activeQuizId ? 'Draft Saved' : 'Awaiting Publication'}</span>
-              </div>
-              <div className="space-y-3">
-                <button
-                  onClick={handleSaveDraft}
-                  disabled={saving}
-                  className="w-full py-3 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-800 flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
-                >
-                  {saving ? 'Saving...' : 'Save Draft'} <Icon name={saving ? 'sync' : 'save'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={handlePublishQuiz}
-                  disabled={saving}
-                  className="w-full py-4 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-3 disabled:opacity-50 transition-all"
-                >
-                  {saving ? 'Publishing...' : 'Publish to Students'} <Icon name={saving ? 'sync' : 'publish'} className={`text-sm ${saving ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-           </div>
-        </div>
-      </div>
+        {unmarkable.length > 0 && (
+          <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40">
+            <span className="flex items-center gap-2 text-[11.5px] text-ink-butter">
+              <Icon name="warning" className="text-[15px]" />
+              {unmarkable.length} question{unmarkable.length === 1 ? ' has' : 's have'} no correct answer set. Publishing is
+              blocked until every question can be marked.
+            </span>
+          </div>
+        )}
+      </Card>
 
-      {editingQuestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Edit Question</h3>
-                <button onClick={() => setEditingQuestion(null)} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"><Icon name="close" /></button>
+      <InlineNote icon="lock">
+        Correct answers are never sent to the student&rsquo;s browser. Marking happens on the server when the quiz is submitted.
+      </InlineNote>
+
+      <Drawer
+        open={!!q}
+        onClose={() => setEditingQuestion(null)}
+        title={questions.some((x) => x.id === q?.id) ? 'Edit question' : 'New question'}
+        footer={
+          <>
+            <Button variant="secondary" block onClick={() => setEditingQuestion(null)}>
+              Cancel
+            </Button>
+            <Button block onClick={handleUpdateQuestion} disabled={!q?.text.trim()}>
+              Save question
+            </Button>
+          </>
+        }
+      >
+        {q && (
+          <form onSubmit={handleUpdateQuestion} className="flex flex-col gap-4">
+            <Field label="Question text">
+              <Textarea rows={3} value={q.text} onChange={(e) => setEditingQuestion({ ...q, text: e.target.value })} />
+            </Field>
+
+            <div className="flex gap-3">
+              <Field label="Type" className="flex-1">
+                <Select
+                  value={q.type}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    setEditingQuestion({
+                      ...q,
+                      type,
+                      correctAnswer: '',
+                      options: type === 'Multiple Choice' ? q.options?.length ? q.options : ['', '', '', ''] : [],
+                    });
+                  }}
+                >
+                  {TYPES.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Points" className="w-28">
+                <Input
+                  type="number"
+                  min={1}
+                  value={q.points || 1}
+                  onChange={(e) => setEditingQuestion({ ...q, points: Math.max(1, Number(e.target.value) || 1) })}
+                  className="text-right font-semibold"
+                />
+              </Field>
             </div>
-            <form onSubmit={handleUpdateQuestion} className="p-6 overflow-y-auto space-y-4">
-                <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Question Text</label>
-                    <textarea 
-                        required
-                        className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-primary focus:border-primary min-h-[100px] dark:text-white"
-                        value={editingQuestion.text}
-                        onChange={e => setEditingQuestion({...editingQuestion, text: e.target.value})}
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold uppercase text-slate-500 mb-1">Type</label>
-                        <select 
-                            className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-primary focus:border-primary dark:text-white"
-                            value={editingQuestion.type}
-                            onChange={e => setEditingQuestion({...editingQuestion, type: e.target.value})}
-                        >
-                            <option>Multiple Choice</option>
-                            <option>Short Answer</option>
-                            <option>True/False</option>
-                        </select>
-                    </div>
-                </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                    <button 
-                        type="button"
-                        onClick={() => setEditingQuestion(null)}
-                        className="px-4 py-2 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        type="submit"
-                        className="px-6 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90"
-                    >
-                        Save Question
-                    </button>
+            {isChoice && (
+              <Field label="Options — tick the correct one">
+                <div className="flex flex-col gap-2">
+                  {(q.options || []).map((opt, idx) => {
+                    const correct = !!opt && q.correctAnswer === opt;
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2.5 h-[42px] rounded-xl border px-3.5 ${
+                          correct ? 'border-[1.5px] border-success bg-tint-mint' : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => opt && setEditingQuestion({ ...q, correctAnswer: opt })}
+                          disabled={!opt}
+                          aria-label={`Mark option ${idx + 1} correct`}
+                          className={`size-[18px] rounded-full shrink-0 flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                            correct ? 'bg-success text-white' : 'border-2 border-slate-300 dark:border-slate-600'
+                          } ${!opt ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          {correct && <Icon name="check" className="text-[11px]" strokeWidth={3} />}
+                        </button>
+                        <input
+                          value={opt}
+                          onChange={(e) => setOption(idx, e.target.value)}
+                          placeholder={`Option ${idx + 1}`}
+                          aria-label={`Option ${idx + 1}`}
+                          className="flex-1 bg-transparent text-[12.5px] text-slate-900 dark:text-white placeholder:text-slate-400 outline-none"
+                        />
+                        {correct && <span className="text-[10.5px] font-semibold text-ink-mint">Correct</span>}
+                      </div>
+                    );
+                  })}
                 </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+              </Field>
+            )}
+
+            {isTrueFalse && (
+              <Field label="Correct answer">
+                <div className="flex gap-2">
+                  {['True', 'False'].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setEditingQuestion({ ...q, correctAnswer: v })}
+                      className={`flex-1 h-11 rounded-xl text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                        q.correctAnswer === v
+                          ? 'bg-success text-white'
+                          : 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
+
+            {!isChoice && !isTrueFalse && (
+              <Field label="Accepted answer" hint="Compared case-insensitively on the server.">
+                <Input value={q.correctAnswer} onChange={(e) => setEditingQuestion({ ...q, correctAnswer: e.target.value })} />
+              </Field>
+            )}
+
+            {!isMarkable(q) && (
+              <InlineNote tone="butter" icon="warning">
+                Set a correct answer, or this question cannot be marked and the quiz cannot be published.
+              </InlineNote>
+            )}
+          </form>
+        )}
+      </Drawer>
+    </WorkSurface>
   );
 };

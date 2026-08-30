@@ -2,74 +2,137 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------------------------------------------------------------------------
+   Design tokens — EduManage redesign
+   Values are lifted verbatim from the approved design canvas. Utilities in
+   Tailwind v4 compile to var(--token), so the .dark block below re-points the
+   same tokens and every utility follows without a single dark: variant.
+   --------------------------------------------------------------------------- */
+
 @theme {
+  /* Brand + surfaces */
   --color-primary: #195de6;
+  --color-primary-deep: #1247b8;
   --color-background-light: #f8fafc;
   --color-background-dark: #0f172a;
   --color-surface-light: #ffffff;
   --color-surface-dark: #1e293b;
   --color-sidebar-light: #ffffff;
   --color-sidebar-dark: #1e293b;
+
+  /* Semantic */
   --color-danger: #ef4444;
   --color-warning: #f59e0b;
+  --color-success: #10b981;
   --color-holiday: #ef4444;
   --color-exam: #f59e0b;
   --color-event: #10b981;
 
-  --font-display: "Lexend", sans-serif;
-  --font-body: "Noto Sans", sans-serif;
+  /* Pastel card fills. Grouping and mood only — never encode a value in these. */
+  --color-tint-blue: #eaf0fe;
+  --color-tint-peach: #fdf0e6;
+  --color-tint-mint: #e8f6ee;
+  --color-tint-butter: #fdf6e3;
+  --color-tint-blush: #fdecef;
+  --color-tint-lilac: #f1edfd;
+
+  /* The ink each tint carries. Paired — never mix a tint with another's ink. */
+  --color-ink-blue: #195de6;
+  --color-ink-peach: #b45309;
+  --color-ink-mint: #0b7f57;
+  --color-ink-butter: #a16207;
+  --color-ink-blush: #be1e51;
+  --color-ink-lilac: #7c3aed;
+
+  /* Chart series — corrected order. #6366f1 was removed: paired with #8b5cf6 it
+     measured ΔE 0.8 under protanopia and 6.3 with normal vision, i.e. two class
+     lines nobody could tell apart. #4a3aa7 replaces it. This order passes
+     lightness, chroma, CVD and normal-vision separation on adjacent pairs. */
+  --color-series-1: #195de6;
+  --color-series-2: #f97316;
+  --color-series-3: #10b981;
+  --color-series-4: #8b5cf6;
+  --color-series-5: #f59e0b;
+  --color-series-6: #ec4899;
+  --color-series-7: #06b6d4;
+  --color-series-8: #4a3aa7;
+
+  /* Radii */
+  --radius-chip: 9px;
+  --radius-control: 13px;
+  --radius-tile: 18px;
+  --radius-panel: 20px;
+  --radius-surface: 22px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 26px -18px rgb(15 23 42 / 0.25);
+  --shadow-panel: 0 1px 2px rgb(15 23 42 / 0.04), 0 14px 34px -22px rgb(15 23 42 / 0.3);
+  --shadow-rail: 0 6px 16px -8px rgb(6 26 72 / 0.55);
+  --shadow-primary: 0 8px 20px -8px rgb(25 93 230 / 0.7);
+  --shadow-drawer: -24px 0 60px -30px rgb(15 23 42 / 0.55);
+
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+/* Dark values. NOTE: dark screens were never designed — these tints are derived
+   mechanically from their light hues so the app's existing dark support keeps
+   working rather than silently breaking. They are a safety net, not a spec. */
+.dark {
+  --color-tint-blue: #13294f;
+  --color-tint-peach: #3a2413;
+  --color-tint-mint: #0f2e23;
+  --color-tint-butter: #33280e;
+  --color-tint-blush: #3a1520;
+  --color-tint-lilac: #241a45;
+
+  --color-ink-blue: #8ab4ff;
+  --color-ink-peach: #f0a868;
+  --color-ink-mint: #5cd6a5;
+  --color-ink-butter: #e8c46a;
+  --color-ink-blush: #f78fae;
+  --color-ink-lilac: #b79cf7;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 26px -18px rgb(0 0 0 / 0.6);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3), 0 14px 34px -22px rgb(0 0 0 / 0.7);
 }
-.material-symbols-outlined.fill-1 {
-  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
-}
+
 body {
-  font-family: "Lexend", sans-serif;
-}
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Login page — animated gradient-mesh background */
-@keyframes drift-a {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(30px, -20px) scale(1.1); }
+/* This app is full of numbers in columns — marks, fees, attendance counts.
+   Tabular figures keep them aligned so a column of scores reads as a column. */
+table, th, td,
+input[type="number"],
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
-@keyframes drift-b {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-25px, 25px) scale(1.05); }
-}
-@keyframes drift-c {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(20px, 20px) scale(1.08); }
-}
-.login-blob {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(70px);
-  opacity: 0.55;
-}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Login — animated gradient-mesh background */
+@keyframes drift-a { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, -20px) scale(1.1); } }
+@keyframes drift-b { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-25px, 25px) scale(1.05); } }
+@keyframes drift-c { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(20px, 20px) scale(1.08); } }
+
+.login-blob { position: absolute; border-radius: 9999px; filter: blur(70px); opacity: 0.55; }
 .login-blob-a { animation: drift-a 10s ease-in-out infinite; }
 .login-blob-b { animation: drift-b 12s ease-in-out infinite; }
 .login-blob-c { animation: drift-c 11s ease-in-out infinite; }
 .login-blob-d { animation: drift-a 13s ease-in-out infinite reverse; }
 
+/* Skeleton shimmer for loading states */
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.skeleton { animation: pulse-soft 1.6s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  .login-blob-a, .login-blob-b, .login-blob-c, .login-blob-d {
-    animation: none;
-  }
+  .login-blob-a, .login-blob-b, .login-blob-c, .login-blob-d, .skeleton { animation: none; }
 }

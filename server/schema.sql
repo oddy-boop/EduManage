@@ -62,10 +62,11 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 CREATE TABLE IF NOT EXISTS quizzes (
     id VARCHAR(255) PRIMARY KEY,
-    teacher_id VARCHAR(255) NOT NULL,
+    teacher_id VARCHAR(255),
     title VARCHAR(255) NOT NULL,
     description TEXT,
     questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    class_id VARCHAR(255),
     is_published BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -164,6 +165,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     due_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    teacher_id VARCHAR(255) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -200,4 +202,46 @@ CREATE TABLE IF NOT EXISTS announcements (
     content TEXT NOT NULL,
     audience VARCHAR(50) NOT NULL DEFAULT 'all',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Which subject a teacher teaches in which class.
+--
+-- Before this table, a teacher had two flat lists — assigned_classes and
+-- assigned_courses — and "expected subjects for a class" was computed as their
+-- cross product. That is wrong whenever a teacher takes different subjects in
+-- different classes: the class would expect a subject nobody teaches there, so
+-- merge status could never complete and the class teacher could never finalize.
+--
+-- users.assigned_classes still governs WHAT A TEACHER MAY SEE (authorisation).
+-- This table governs WHAT THEY ARE EXPECTED TO SUBMIT.
+CREATE TABLE IF NOT EXISTS teacher_assignments (
+    id VARCHAR(255) PRIMARY KEY,
+    teacher_id VARCHAR(255) NOT NULL,
+    class_id VARCHAR(255) NOT NULL,
+    course_code VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (teacher_id, class_id, course_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_assignments_class ON teacher_assignments (class_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_assignments_teacher ON teacher_assignments (teacher_id);
+
+-- The school's grading scale, set by an administrator.
+--
+-- These bands were hardcoded in two places that disagreed with each other, so a
+-- teacher saw one letter on entry and the report card stored another. They now
+-- live here, and both the server and the client read them from this table.
+--
+-- Every mark from 0 to 100 must fall in exactly one band. The API enforces that
+-- on save: an admin editing free-text ranges will otherwise leave a gap, and a
+-- student landing in it would print with no grade at all.
+CREATE TABLE IF NOT EXISTS grade_bands (
+    id VARCHAR(255) PRIMARY KEY,
+    label VARCHAR(16) NOT NULL,
+    min_score NUMERIC(5, 2) NOT NULL,
+    max_score NUMERIC(5, 2) NOT NULL,
+    description VARCHAR(255),
+    tone VARCHAR(20) NOT NULL DEFAULT 'blue',
+    sort_order INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

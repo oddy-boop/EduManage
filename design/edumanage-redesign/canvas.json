@@ -1,0 +1,371 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Core screens"
+    },
+    {
+      "id": "page-2",
+      "name": "Workflows"
+    },
+    {
+      "id": "page-3",
+      "name": "Mobile"
+    },
+    {
+      "id": "page-4",
+      "name": "Quiz flow"
+    },
+    {
+      "id": "page-5",
+      "name": "Admin & parent"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Teacher dashboard",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1080
+    },
+    {
+      "file": "AdminDashboard.dc.html",
+      "title": "Admin dashboard",
+      "page": "page-1",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1080
+    },
+    {
+      "file": "ParentDashboard.dc.html",
+      "title": "Parent dashboard",
+      "page": "page-1",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "TeacherAttendance.dc.html",
+      "title": "Attendance register",
+      "page": "page-1",
+      "x": 0,
+      "y": 1420,
+      "w": 1440,
+      "h": 940
+    },
+    {
+      "file": "Login.dc.html",
+      "title": "Sign in",
+      "page": "page-1",
+      "x": 1560,
+      "y": 1420,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "StyleGuide.dc.html",
+      "title": "Design system",
+      "page": "page-1",
+      "x": 3120,
+      "y": 1420,
+      "w": 1440,
+      "h": 1240
+    },
+    {
+      "file": "AdminFees.dc.html",
+      "title": "School fees + record payment",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "AdminApprovals.dc.html",
+      "title": "Report approvals",
+      "page": "page-2",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "TeacherReportEntry.dc.html",
+      "title": "Report entry",
+      "page": "page-2",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "ReportCard.dc.html",
+      "title": "Report card (A4)",
+      "page": "page-2",
+      "x": 4680,
+      "y": 0,
+      "w": 794,
+      "h": 1123,
+      "print": "fixed"
+    },
+    {
+      "file": "MobileDashboard.dc.html",
+      "title": "Teacher dashboard, phone",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "MobileAttendance.dc.html",
+      "title": "Attendance register, phone",
+      "page": "page-3",
+      "x": 510,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AdminGrading.dc.html",
+      "title": "Grading scale settings",
+      "page": "page-2",
+      "x": 5600,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "States.dc.html",
+      "title": "Empty, loading & error states",
+      "page": "page-1",
+      "x": 4680,
+      "y": 1420,
+      "w": 1440,
+      "h": 1040
+    },
+    {
+      "file": "QuizConfig.dc.html",
+      "title": "Quiz configuration",
+      "page": "page-4",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "QuizShare.dc.html",
+      "title": "Publish & share",
+      "page": "page-4",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "QuizResults.dc.html",
+      "title": "Quiz results",
+      "page": "page-4",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "StudentQuiz.dc.html",
+      "title": "Student: taking the quiz",
+      "page": "page-4",
+      "x": 4680,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "StudentResult.dc.html",
+      "title": "Student: score",
+      "page": "page-4",
+      "x": 5190,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AdminRegistration.dc.html",
+      "title": "Registration",
+      "page": "page-5",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "AdminCalendar.dc.html",
+      "title": "Academic calendar",
+      "page": "page-5",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "AdminAuditLogs.dc.html",
+      "title": "Audit logs",
+      "page": "page-5",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 940
+    },
+    {
+      "file": "AdminAnnouncements.dc.html",
+      "title": "Announcements",
+      "page": "page-5",
+      "x": 4680,
+      "y": 0,
+      "w": 1440,
+      "h": 940
+    },
+    {
+      "file": "ParentFees.dc.html",
+      "title": "Parent: school fees",
+      "page": "page-5",
+      "x": 0,
+      "y": 1420,
+      "w": 1440,
+      "h": 940
+    },
+    {
+      "file": "ParentAssignments.dc.html",
+      "title": "Parent: assignments",
+      "page": "page-5",
+      "x": 1560,
+      "y": 1420,
+      "w": 1440,
+      "h": 940
+    },
+    {
+      "file": "ParentReports.dc.html",
+      "title": "Parent: reports",
+      "page": "page-5",
+      "x": 3120,
+      "y": 1420,
+      "w": 1440,
+      "h": 940
+    }
+  ],
+  "annotations": [
+    {
+      "id": "direction",
+      "page": "page-1",
+      "x": 0,
+      "y": -250,
+      "w": 700,
+      "text": "DIRECTION - APPROVED\nBlue rail nav, pastel tinted cards, 20px radii, greeting header, right profile+calendar column.\n\nBuilt on the tokens already in index.css - primary #195de6 and Lexend are unchanged. The pastel fills and the 20px radius are the only genuinely new values."
+    },
+    {
+      "id": "overview-shell",
+      "page": "page-1",
+      "x": 1560,
+      "y": -250,
+      "w": 700,
+      "text": "SHELL A - OVERVIEW (approved)\nRail 256px + content + 312px profile/calendar column.\n\nUsed by all three dashboards. Rail width matches the current w-64 in Layouts.tsx, so the nav change is colour and state only - no structural rewrite."
+    },
+    {
+      "id": "work-shell",
+      "page": "page-1",
+      "x": 0,
+      "y": 1160,
+      "w": 700,
+      "text": "SHELL B - WORK SURFACE (approved)\nRail + full-width content, no right column.\n\nRegisters, tables and forms get the whole width back. Attendance, Fees, Approvals, Report Entry, Registration and Assessment Book all use this shell - see the Workflows page."
+    },
+    {
+      "id": "handoff",
+      "page": "page-1",
+      "x": 3120,
+      "y": 1160,
+      "w": 700,
+      "text": "FOR THE DEV TEAM\nEvery value on the design system board is exact - lift the hex and px straight from here.\n\nOne real bug to fix while we are in there: CLASS_COLORS in AdminDashboard.tsx pairs #8b5cf6 with #6366f1, which is indistinguishable for red-blind viewers. The corrected eight-colour order is on the board."
+    },
+    {
+      "id": "workflow-note",
+      "page": "page-2",
+      "x": 0,
+      "y": -260,
+      "w": 760,
+      "text": "THE THREE WORKFLOWS THAT CARRY THE MOST RISK\nThese are where the app actually does its work, and where the current build is thinnest.\n\nFees shows the drawer pattern over a table. Approvals shows master-detail. Report Entry shows the editable grid - four row states on one board: normal, focused, warning, validation error, and locked-after-submission."
+    },
+    {
+      "id": "entry-note",
+      "page": "page-2",
+      "x": 3120,
+      "y": -260,
+      "w": 760,
+      "text": "REPORT ENTRY - CA IS DERIVED, NOT TYPED\nCA comes from the Assessment Book (caScore + entryCount in TeacherReportEntry.tsx), so it is read-only with its entry count beneath. The teacher types only the exam score and the remark.\n\nDECIDED: incomplete CA warns, it does not block. The amber row - 2 of 6 assessments recorded - stays submittable. Rationale: one colleague's unfinished Assessment Book must not stall a whole class's report batch. The hard block is reserved for actual invalid data, like the red row where exam exceeds 60."
+    },
+    {
+      "id": "card-note",
+      "page": "page-2",
+      "x": 4680,
+      "y": -260,
+      "w": 700,
+      "text": "REPORT CARD - A4, 794x1123 at 96dpi\nThis is the printed artefact, so it exports as one PDF page at true size. Body copy is 16px = 12pt, the print floor.\n\nThe grading key is NOT hardcoded here - it renders from the scale the admin configures on the Grading scale board to the right. The bands shown are placeholder values.\n\nSchool address, phone and email stay bracketed placeholders, filled from School Settings."
+    },
+    {
+      "id": "mobile-note",
+      "page": "page-3",
+      "x": 0,
+      "y": -300,
+      "w": 780,
+      "text": "MOBILE NAV - DECIDED\nBottom tab bar, 5 items, replacing the current off-canvas drawer. A teacher marking a register one-handed reaches the main screens without opening anything.\n\nThis is a real change to Layouts.tsx, not a restyle: the drawer and its overlay come out below the lg breakpoint and the tab bar takes over. The rail stays exactly as-is at lg and above.\n\nEvery tap target here is at least 44px. No fake status bar is drawn - the real one renders on top."
+    },
+    {
+      "id": "grading-note",
+      "page": "page-2",
+      "x": 5600,
+      "y": -300,
+      "w": 780,
+      "text": "GRADING SCALE - ADMIN CONFIGURED\nDecided: the school sets its own bands, weighting and pass mark. This board is new work, not a restyle - nothing like it exists today.\n\nWHAT THE DEV TEAM NEEDS TO KNOW:\n1. The bands are currently HARDCODED IN TWO PLACES - TeacherReportEntry.tsx around line 106 and server.js around line 1774 - and the two copies already disagree with each other. Both must be replaced by reads from the configured scale, with the server as the authority.\n2. grade_configs in schema.sql is CLASS LEVELS plus base fee, not grading bands. Do not extend it. The name collision will cost someone an afternoon.\n3. system_settings is a key/value VARCHAR(255) pair - too small to hold a band table. This needs a new table.\n4. Bands must cover 0-100 with no gap and no overlap. The board shows the gap state, because an admin editing free-text ranges will create one.\n5. Editing a live scale must not rewrite already-published report cards. A released card keeps the grade it was printed with."
+    },
+    {
+      "id": "states-note",
+      "page": "page-1",
+      "x": 4680,
+      "y": 1160,
+      "w": 740,
+      "text": "STATES - THE ONE NOBODY ASKS FOR\nEvery screen fetches, so every screen can show one of these instead of data. Specified once here so it is not reinvented per screen.\n\nThe rules that matter: skeletons not spinners, so layout does not jump. \"Nothing yet\" and \"filter found nothing\" are DIFFERENT screens with different actions - the second must never offer to create. Errors say what failed in the user's words and always offer a retry; never a status code. A role that cannot see something is not an apology."
+    },
+    {
+      "id": "quiz-note",
+      "page": "page-4",
+      "x": 0,
+      "y": -320,
+      "w": 800,
+      "text": "QUIZ FLOW - END TO END\nConfig, share, the two student screens, and results. None of this existed in the design set before.\n\nTHE TWO STUDENT BOARDS ARE PHONES, DELIBERATELY. The share board hands out a QR poster to project on the classroom wall - whoever scans it is holding a phone. Designing that surface desktop-first would have been a mistake.\n\nFrom the schema: quiz_results is UNIQUE (quiz_id, student_id). One attempt per student, enforced by the database - a second submission is REJECTED, not an overwrite. The share board states this so a teacher is not surprised, and a resit needs a teacher-initiated reset that does not exist yet."
+    },
+    {
+      "id": "quiz-sec-note",
+      "page": "page-4",
+      "x": 3120,
+      "y": -320,
+      "w": 800,
+      "text": "TWO THINGS TO HOLD THE DEV TEAM TO\n1. Correct answers must never reach the student's browser. Strip them server-side when serving a quiz, and mark on submit. The config board says so where the teacher sets the answer, so nobody assumes the client can be trusted.\n2. StudentQuiz.tsx currently seeds a 14:59 timer in client state. A timer that lives only in the browser is a suggestion, not a limit - the server needs the authoritative open and close window, which is why the share board has explicit opens/closes fields.\n\nThe results board adds per-question difficulty. That is the one view that changes what a teacher does next."
+    },
+    {
+      "id": "crud-note",
+      "page": "page-5",
+      "x": 0,
+      "y": -300,
+      "w": 800,
+      "text": "THE REMAINING SCREENS\nSeven screens that mostly recombine patterns already settled elsewhere: the work shell, the table, the drawer, the child switcher, the audience chip.\n\nThey are here so nobody has to guess, but they are the lowest-risk boards in the set. If the build runs short on time, these are the ones a competent dev can extrapolate from the Workflows page.\n\nRegistration shows the credential hand-off state, which is the only genuinely new pattern here: a generated login ID and one-time password that must be read out or printed, never emailed as plain text on its own."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-4"
+  }
+}

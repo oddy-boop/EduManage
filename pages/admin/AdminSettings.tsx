@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../components/Icon';
 import { firestoreService } from '../../lib/services';
 import { useAuth } from '../../lib/AuthContext';
+import { loadGradingScale } from '../../lib/grading';
+import { WorkSurface } from '../../components/Layouts';
+import {
+  Badge, Button, Card, Drawer, EmptyState, Field, ghs, InlineNote, Input, PageHeader, SectionHeading, Select,
+  SkeletonTable, StatTile, Tabs, Td, Th,
+} from '../../components/ui';
 
 interface GradeConfig {
   id: string;
@@ -17,6 +23,9 @@ interface CourseConfig {
   department: string;
 }
 
+type Tab = 'grades' | 'courses' | 'grading' | 'system';
+const TERMS = ['Term 1', 'Term 2', 'Term 3'];
+
 export const AdminSettings: React.FC = () => {
   const { user } = useAuth();
   const [grades, setGrades] = useState<GradeConfig[]>([]);
@@ -24,227 +33,197 @@ export const AdminSettings: React.FC = () => {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'grades' | 'courses' | 'system'>('grades');
+  const [activeTab, setActiveTab] = useState<Tab>('grades');
+  const [status, setStatus] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
-  // Form states
   const [newGrade, setNewGrade] = useState({ name: '', baseFee: 0 });
   const [newCourse, setNewCourse] = useState({ name: '', code: '', department: '' });
-
-  // Editing states
   const [editingGrade, setEditingGrade] = useState<GradeConfig | null>(null);
   const [editingCourse, setEditingCourse] = useState<CourseConfig | null>(null);
 
-  // System states
   const [currentTerm, setCurrentTerm] = useState('Term 2');
   const [savingTerm, setSavingTerm] = useState(false);
   const [fromClass, setFromClass] = useState('');
   const [toClass, setToClass] = useState('');
   const [promoting, setPromoting] = useState(false);
+  const [arrearsPreview, setArrearsPreview] = useState<{ total: number; students: any[] } | null>(null);
+  const [carrying, setCarrying] = useState(false);
 
-  // Password change states
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
 
+  // Grading scale — the school's own bands, weighting and pass mark.
+  const [scale, setScale] = useState<{ bands: any[]; caMax: number; examMax: number; passMark: number } | null>(null);
+  const [savingScale, setSavingScale] = useState(false);
+
+  // School identity — printed on every report card, so it belongs to the school,
+  // not the codebase.
+  const [school, setSchool] = useState({ school_name: '', school_address: '', school_phone: '', school_email: '' });
+  const [savingSchool, setSavingSchool] = useState(false);
+
   useEffect(() => {
-    const unsubGrades = firestoreService.getGrades((data) => {
-        setGrades(data as GradeConfig[]);
-    });
-
+    const unsubGrades = firestoreService.getGrades((data) => setGrades(data as GradeConfig[]));
     const unsubCourses = firestoreService.getCourses((data) => {
-        setCourses(data as CourseConfig[]);
-        setLoading(false);
+      setCourses(data as CourseConfig[]);
+      setLoading(false);
     });
+    const unsubAudit = firestoreService.getAuditLogs(setAuditLogs);
+    const unsubTeachers = firestoreService.getTeachers(setTeachers);
 
-    const unsubAudit = firestoreService.getAuditLogs((data) => {
-        setAuditLogs(data);
-    });
+    firestoreService
+      .getGradingScale()
+      .then(setScale)
+      .catch(() => setScale(null));
 
-    const unsubTeachers = firestoreService.getTeachers((data) => {
-        setTeachers(data);
-    });
-
-    const fetchSystemSettings = async () => {
-      try {
-        const settings = await firestoreService.getSystemSettings();
-        if (settings && settings.current_term) {
-          setCurrentTerm(settings.current_term);
-        }
-      } catch (err) {
-        console.error("Failed to load system settings:", err);
-      }
-    };
-    fetchSystemSettings();
+    firestoreService
+      .getSystemSettings()
+      .then((settings) => {
+        if (settings?.current_term) setCurrentTerm(settings.current_term);
+        setSchool({
+          school_name: settings?.school_name || '',
+          school_address: settings?.school_address || '',
+          school_phone: settings?.school_phone || '',
+          school_email: settings?.school_email || '',
+        });
+      })
+      .catch((err) => console.error('Failed to load system settings:', err));
 
     return () => {
-        unsubGrades();
-        unsubCourses();
-        unsubAudit();
-        unsubTeachers();
+      unsubGrades();
+      unsubCourses();
+      unsubAudit();
+      unsubTeachers();
     };
   }, []);
 
-  const teacherName = (uid?: string | null) => teachers.find(t => t.uid === uid)?.name || null;
+  const teacherName = (uid?: string | null) => teachers.find((t) => t.uid === uid)?.name || null;
+
+  const log = (action: string, details: string) =>
+    user
+      ? firestoreService.logActivity({
+          userId: user.uid,
+          userEmail: user.email || '',
+          userName: user.name || '',
+          action,
+          details,
+          type: 'config_change',
+        })
+      : Promise.resolve();
 
   const handleAddGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGrade.name) return;
+    setStatus(null);
     try {
-        const id = newGrade.name.replace(/\s+/g, '-').toLowerCase();
-        await firestoreService.createGradeConfig(id, {
-            ...newGrade,
-            updatedAt: new Date().toISOString()
-        });
-        if (user) {
-          await firestoreService.logActivity({
-            userId: user.uid,
-            userEmail: user.email || '',
-            userName: user.name || '',
-            action: 'Add Grade Config',
-            details: `Added/updated grade level configuration: ${newGrade.name} with Base Fee: GH₵${newGrade.baseFee}`,
-            type: 'config_change'
-          });
-        }
-        setNewGrade({ name: '', baseFee: 0 });
+      const id = newGrade.name.replace(/\s+/g, '-').toLowerCase();
+      await firestoreService.createGradeConfig(id, { ...newGrade, updatedAt: new Date().toISOString() });
+      await log('Add Grade Config', `Added/updated grade level configuration: ${newGrade.name} with Base Fee: GH₵${newGrade.baseFee}`);
+      setNewGrade({ name: '', baseFee: 0 });
+      setStatus({ tone: 'ok', text: `${id} saved.` });
     } catch (error) {
-        console.error("Error adding grade:", error);
+      console.error('Error adding grade:', error);
+      setStatus({ tone: 'bad', text: 'Could not save that class level.' });
     }
   };
 
   const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCourse.name || !newCourse.code) return;
+    setStatus(null);
     try {
-        const id = newCourse.code.toUpperCase();
-        await firestoreService.createCourseConfig(id, {
-            ...newCourse,
-            updatedAt: new Date().toISOString()
-        });
-        if (user) {
-          await firestoreService.logActivity({
-            userId: user.uid,
-            userEmail: user.email || '',
-            userName: user.name || '',
-            action: 'Add Course Config',
-            details: `Added/updated course catalog configuration: ${newCourse.name} (${id}) under Department: ${newCourse.department || 'General'}`,
-            type: 'config_change'
-          });
-        }
-        setNewCourse({ name: '', code: '', department: '' });
+      const id = newCourse.code.toUpperCase();
+      await firestoreService.createCourseConfig(id, { ...newCourse, updatedAt: new Date().toISOString() });
+      await log(
+        'Add Course Config',
+        `Added/updated course catalog configuration: ${newCourse.name} (${id}) under Department: ${newCourse.department || 'General'}`,
+      );
+      setNewCourse({ name: '', code: '', department: '' });
+      setStatus({ tone: 'ok', text: `${id} saved.` });
     } catch (error) {
-        console.error("Error adding course:", error);
+      console.error('Error adding course:', error);
+      setStatus({ tone: 'bad', text: 'Could not save that course.' });
     }
   };
 
   const handleEditGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingGrade) return;
+    setStatus(null);
     try {
       await firestoreService.createGradeConfig(editingGrade.id, {
         name: editingGrade.name,
         baseFee: editingGrade.baseFee,
         classTeacherId: editingGrade.classTeacherId || null,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'Edit Grade Config',
-          details: `Edited grade level configuration: ${editingGrade.name} to Base Fee: GH₵${editingGrade.baseFee}${editingGrade.classTeacherId ? `, Class Teacher: ${teacherName(editingGrade.classTeacherId)}` : ''}`,
-          type: 'config_change'
-        });
-      }
+      await log(
+        'Edit Grade Config',
+        `Edited grade level configuration: ${editingGrade.name} to Base Fee: GH₵${editingGrade.baseFee}${
+          editingGrade.classTeacherId ? `, Class Teacher: ${teacherName(editingGrade.classTeacherId)}` : ''
+        }`,
+      );
       setEditingGrade(null);
+      setStatus({ tone: 'ok', text: 'Class level updated.' });
     } catch (error) {
-      console.error("Error updating grade config:", error);
+      console.error('Error updating grade config:', error);
+      setStatus({ tone: 'bad', text: 'Could not update that class level.' });
     }
   };
 
   const handleEditCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse) return;
+    setStatus(null);
     try {
       await firestoreService.createCourseConfig(editingCourse.id, {
         name: editingCourse.name,
         code: editingCourse.code,
         department: editingCourse.department,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'Edit Course Config',
-          details: `Edited course config: ${editingCourse.name} (${editingCourse.code})`,
-          type: 'config_change'
-        });
-      }
+      await log('Edit Course Config', `Edited course config: ${editingCourse.name} (${editingCourse.code})`);
       setEditingCourse(null);
+      setStatus({ tone: 'ok', text: 'Course updated.' });
     } catch (error) {
-      console.error("Error updating course config:", error);
+      console.error('Error updating course config:', error);
+      setStatus({ tone: 'bad', text: 'Could not update that course.' });
     }
   };
 
   const handleDeleteGrade = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete the configuration for ${name}?`)) return;
+    if (!window.confirm(`Delete the configuration for ${name}? Students already in it keep their class label.`)) return;
     try {
       await firestoreService.deleteGradeConfig(id);
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'Delete Grade Config',
-          details: `Deleted grade level configuration for ${name}`,
-          type: 'config_change'
-        });
-      }
+      await log('Delete Grade Config', `Deleted grade level configuration for ${name}`);
     } catch (error) {
-      console.error("Error deleting grade config:", error);
+      console.error('Error deleting grade config:', error);
+      setStatus({ tone: 'bad', text: 'Could not delete that class level.' });
     }
   };
 
   const handleDeleteCourse = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete the configuration for ${name}?`)) return;
+    if (!window.confirm(`Delete the configuration for ${name}?`)) return;
     try {
       await firestoreService.deleteCourseConfig(id);
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'Delete Course Config',
-          details: `Deleted course configuration for ${name}`,
-          type: 'config_change'
-        });
-      }
+      await log('Delete Course Config', `Deleted course configuration for ${name}`);
     } catch (error) {
-      console.error("Error deleting course config:", error);
+      console.error('Error deleting course config:', error);
+      setStatus({ tone: 'bad', text: 'Could not delete that course.' });
     }
   };
 
   const handleSaveTerm = async () => {
     setSavingTerm(true);
+    setStatus(null);
     try {
       await firestoreService.updateSystemSetting('current_term', currentTerm);
-      alert('School active term updated successfully!');
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'System Configuration Update',
-          details: `Updated active academic term to ${currentTerm}`,
-          type: 'config_change'
-        });
-      }
+      await log('System Configuration Update', `Updated active academic term to ${currentTerm}`);
+      setStatus({ tone: 'ok', text: `Active term is now ${currentTerm}.` });
     } catch (err) {
       console.error(err);
-      alert('Failed to save settings.');
+      setStatus({ tone: 'bad', text: 'Could not save the active term.' });
     } finally {
       setSavingTerm(false);
     }
@@ -253,59 +232,142 @@ export const AdminSettings: React.FC = () => {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    setStatus(null);
     if (newPassword.length < 8) {
-      alert('New password must be at least 8 characters.');
+      setStatus({ tone: 'bad', text: 'New password must be at least 8 characters.' });
       return;
     }
     if (newPassword !== confirmPassword) {
-      alert('New password and confirmation do not match.');
+      setStatus({ tone: 'bad', text: 'New password and confirmation do not match.' });
       return;
     }
     setChangingPassword(true);
     try {
       await firestoreService.changePassword(currentPassword, newPassword);
-      alert('Password updated successfully.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setStatus({ tone: 'ok', text: 'Password updated.' });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to change password.');
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not change the password.' });
     } finally {
       setChangingPassword(false);
     }
   };
 
+  /** Contiguity check mirroring the server's, so gaps are visible before saving. */
+  const coverage = useMemo(() => {
+    if (!scale?.bands?.length) return { gaps: [] as string[], ok: false };
+    const sorted = [...scale.bands].sort((a, b) => Number(a.minScore) - Number(b.minScore));
+    const gaps: string[] = [];
+    if (Number(sorted[0].minScore) > 0) gaps.push(`0–${Number(sorted[0].minScore) - 1}`);
+    for (let i = 1; i < sorted.length; i++) {
+      const prevMax = Number(sorted[i - 1].maxScore);
+      const min = Number(sorted[i].minScore);
+      if (min > prevMax + 1) gaps.push(`${prevMax + 1}–${min - 1}`);
+    }
+    const last = Number(sorted[sorted.length - 1].maxScore);
+    if (last < 100) gaps.push(`${last + 1}–100`);
+    return { gaps, ok: gaps.length === 0 };
+  }, [scale]);
+
+  const setBand = (i: number, patch: any) =>
+    setScale((prev) => (prev ? { ...prev, bands: prev.bands.map((b, j) => (j === i ? { ...b, ...patch } : b)) } : prev));
+
+  const handleSaveScale = async () => {
+    if (!scale) return;
+    setSavingScale(true);
+    setStatus(null);
+    try {
+      const saved = await firestoreService.setGradingScale(scale);
+      setScale(saved);
+      await loadGradingScale();
+      await log('Grading Scale Update', `Updated the grading scale to ${scale.bands.length} band(s), CA ${scale.caMax} / exam ${scale.examMax}, pass mark ${scale.passMark}`);
+      setStatus({ tone: 'ok', text: 'Grading scale saved. New report cards use it from now on.' });
+    } catch (err) {
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not save the grading scale.' });
+    } finally {
+      setSavingScale(false);
+    }
+  };
+
+  const handleSaveSchool = async () => {
+    setSavingSchool(true);
+    setStatus(null);
+    try {
+      await Promise.all(
+        Object.entries(school).map(([key, value]) => firestoreService.updateSystemSetting(key, value.trim())),
+      );
+      await log('School Profile Update', `Updated school identity to "${school.school_name.trim() || '(unnamed)'}"`);
+      setStatus({ tone: 'ok', text: 'School details saved. They appear on every report card from now on.' });
+    } catch (err) {
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not save the school details.' });
+    } finally {
+      setSavingSchool(false);
+    }
+  };
+
+  const previewArrears = async () => {
+    setStatus(null);
+    try {
+      const res = await firestoreService.carryForwardArrears(currentTerm, true);
+      setArrearsPreview({ total: res.total, students: res.students });
+    } catch (err) {
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not check arrears.' });
+    }
+  };
+
+  const handleCarryForward = async () => {
+    if (!arrearsPreview || arrearsPreview.students.length === 0) return;
+    if (
+      !window.confirm(
+        `Carry ${ghs(arrearsPreview.total)} of unpaid balances from earlier terms into ${currentTerm}, for ${arrearsPreview.students.length} student(s)? The original charges stay on record, marked as carried.`,
+      )
+    )
+      return;
+    setCarrying(true);
+    setStatus(null);
+    try {
+      const res = await firestoreService.carryForwardArrears(currentTerm, false);
+      await log(
+        'Arrears Carried Forward',
+        `Carried ${res.total} of unpaid balances into ${currentTerm} for ${res.carriedCount} student(s)`,
+      );
+      setArrearsPreview(null);
+      setStatus({ tone: 'ok', text: `Carried ${ghs(res.total)} into ${currentTerm} for ${res.carriedCount} student(s).` });
+    } catch (err) {
+      setStatus({ tone: 'bad', text: err instanceof Error ? err.message : 'Could not carry arrears forward.' });
+    } finally {
+      setCarrying(false);
+    }
+  };
+
   const handlePromote = async () => {
+    setStatus(null);
     if (!fromClass || !toClass) {
-      alert('Please select both starting and destination classes.');
+      setStatus({ tone: 'bad', text: 'Pick both a starting and a destination class.' });
       return;
     }
     if (fromClass === toClass) {
-      alert('Starting and destination classes must be different.');
+      setStatus({ tone: 'bad', text: 'Starting and destination classes must be different.' });
       return;
     }
-    if (!window.confirm(`Are you sure you want to promote all students from ${fromClass} to ${toClass}? This will move them in real-time, assigning them to the teachers of ${toClass}.`)) {
+    if (
+      !window.confirm(
+        `Promote all students from ${fromClass} to ${toClass}? This moves them immediately and reassigns them to the teachers of ${toClass}.`,
+      )
+    )
       return;
-    }
     setPromoting(true);
     try {
       const res = await firestoreService.promoteStudents(fromClass, toClass);
-      alert(`Promotion completed successfully! ${res.promotedCount} students promoted from ${fromClass} to ${toClass}.`);
-      if (user) {
-        await firestoreService.logActivity({
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.name || '',
-          action: 'Batch Promotion Executed',
-          details: `Promoted ${res.promotedCount} students from class ${fromClass} to class ${toClass}`,
-          type: 'config_change'
-        });
-      }
+      await log('Batch Promotion Executed', `Promoted ${res.promotedCount} students from class ${fromClass} to class ${toClass}`);
       setFromClass('');
       setToClass('');
+      setStatus({ tone: 'ok', text: `${res.promotedCount} students promoted from ${fromClass} to ${toClass}.` });
     } catch (err) {
       console.error(err);
-      alert('Promotion execution failed.');
+      setStatus({ tone: 'bad', text: 'Promotion failed. No students were moved.' });
     } finally {
       setPromoting(false);
     }
@@ -313,572 +375,625 @@ export const AdminSettings: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <Icon name="sync" className="animate-spin text-primary text-4xl" />
-      </div>
+      <WorkSurface>
+        <div className="h-14 w-56 skeleton rounded-xl bg-slate-200/70 dark:bg-slate-700/50" />
+        <SkeletonTable rows={5} />
+      </WorkSurface>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-150">
-      {/* Header Block */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-             <span className="font-bold text-slate-900 dark:text-white">Admin Portal</span>
-             <span>/</span>
-             <span className="font-medium text-primary">System Settings</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white uppercase tracking-tight">Configuration Hub</h1>
-          <p className="text-sm text-slate-555">Manage academic parameters, course directory, and student transition pathways.</p>
-        </div>
+    <WorkSurface>
+      <PageHeader
+        title="School Settings"
+        subtitle="Class levels, the course catalogue, and school-wide configuration"
+        actions={
+          status && (
+            <span className={`text-[11.5px] flex items-center gap-1.5 ${status.tone === 'ok' ? 'text-ink-mint' : 'text-ink-blush'}`}>
+              <Icon name={status.tone === 'ok' ? 'check_circle' : 'priority_high'} className="text-[14px]" />
+              {status.text}
+            </span>
+          )
+        }
+      />
 
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700/30 w-fit shrink-0">
-             <button 
-               onClick={() => setActiveTab('grades')}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'grades' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'}`}
-             >
-                 <Icon name="tune" /> Grade Levels & Rates
-             </button>
-             <button 
-               onClick={() => setActiveTab('courses')}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'courses' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'}`}
-             >
-                 <Icon name="auto_stories" /> Course Catalog
-             </button>
-             <button 
-               onClick={() => setActiveTab('system')}
-               className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'system' ? 'bg-white dark:bg-slate-700 shadow-md text-primary dark:text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'}`}
-             >
-                 <Icon name="settings_system_daydream" /> System & Promotions
-             </button>
-        </div>
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={(v) => {
+          setActiveTab(v);
+          setStatus(null);
+        }}
+        tabs={[
+          { value: 'grades', label: 'Class levels' },
+          { value: 'courses', label: 'Subjects & courses' },
+          { value: 'grading', label: 'Grading scale' },
+          { value: 'system', label: 'System' },
+        ]}
+      />
 
       {activeTab === 'grades' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Add Grade Form */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-4">Add Grade Config</h3>
-            <form onSubmit={handleAddGrade} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Grade Level Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Grade 10"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary outline-none"
-                  value={newGrade.name}
-                  onChange={(e) => setNewGrade({ ...newGrade, name: e.target.value })}
-                  required
+        <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+          <Card className="flex flex-col gap-4 h-fit">
+            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Add a class level</p>
+            <form onSubmit={handleAddGrade} className="flex flex-col gap-4">
+              <Field label="Class level name" hint="The id is derived from this, e.g. “Grade 7” → grade-7.">
+                <Input value={newGrade.name} onChange={(e) => setNewGrade({ ...newGrade, name: e.target.value })} placeholder="e.g. Grade 7" />
+              </Field>
+              <Field label="Base tuition fee (GHS)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={newGrade.baseFee || ''}
+                  onChange={(e) => setNewGrade({ ...newGrade, baseFee: Number(e.target.value) || 0 })}
+                  className="text-right"
                 />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Base Tuition Fee (GHS)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-450 font-bold text-xs">GH₵</span>
-                  <input 
-                    type="number" 
-                    placeholder="0.00"
-                    className="w-full pl-14 pr-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary outline-none"
-                    value={newGrade.baseFee || ''}
-                    onChange={(e) => setNewGrade({ ...newGrade, baseFee: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-              </div>
-              <button 
-                type="submit"
-                className="w-full py-3 bg-primary text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/95 transition-all flex items-center justify-center gap-2"
-              >
-                <Icon name="add" /> Register Grade Rate
-              </button>
+              </Field>
+              <Button type="submit" icon="add" block disabled={!newGrade.name}>
+                Add class level
+              </Button>
             </form>
-          </div>
+          </Card>
 
-          {/* Grades List */}
-          <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-               <h3 className="font-bold text-slate-900 dark:text-white text-base">Configured Grade Levels</h3>
-               <p className="text-xs text-slate-550">Master list of school fees structure policies by grade level.</p>
-             </div>
-             <div className="overflow-x-auto">
-               <table className="w-full text-left">
-                  <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500">
-                    <tr>
-                      <th className="px-6 py-4">Grade / Class</th>
-                      <th className="px-6 py-4">Base Fee Rate</th>
-                      <th className="px-6 py-4">Class Teacher</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-                    {grades.map(g => (
-                      <tr key={g.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{g.name}</td>
-                        <td className="px-6 py-4 font-semibold text-slate-500">GH₵{g.baseFee?.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td className="px-6 py-4">
-                          {teacherName(g.classTeacherId) ? (
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">{teacherName(g.classTeacherId)}</span>
-                          ) : (
-                            <span className="text-slate-400 italic text-xs">Not assigned</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
-                           <button 
-                             onClick={() => setEditingGrade(g)}
-                             className="text-xs font-bold text-primary hover:underline"
-                           >
-                             Edit
-                           </button>
-                           <button 
-                             onClick={() => handleDeleteGrade(g.id, g.name)}
-                             className="text-xs font-bold text-red-500 hover:underline"
-                           >
-                             Delete
-                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {grades.length === 0 && (
+          <div className="flex flex-col gap-3">
+            <SectionHeading>Configured class levels ({grades.length})</SectionHeading>
+            {grades.length === 0 ? (
+              <EmptyState icon="class" title="No class levels yet" body="Add one and it becomes selectable on registration, fees and reports." />
+            ) : (
+              <Card pad={false}>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-900/40">
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No grade configs defined.</td>
+                        <Th>Class level</Th>
+                        <Th>Class teacher</Th>
+                        <Th className="text-right">Base fee</Th>
+                        <Th className="text-right">Actions</Th>
                       </tr>
-                    )}
-                  </tbody>
-               </table>
-             </div>
+                    </thead>
+                    <tbody>
+                      {grades.map((g) => (
+                        <tr key={g.id}>
+                          <Td>
+                            <p className="text-[12.5px] font-semibold text-slate-900 dark:text-white">{g.name}</p>
+                            <p className="text-[10.5px] text-slate-400">{g.id}</p>
+                          </Td>
+                          <Td>
+                            {teacherName(g.classTeacherId) ?? <span className="text-slate-400 italic">Not assigned</span>}
+                          </Td>
+                          <Td className="text-right font-semibold text-slate-900 dark:text-white">{ghs(g.baseFee)}</Td>
+                          <Td className="text-right">
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setEditingGrade(g)}
+                                aria-label={`Edit ${g.name}`}
+                                className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-primary flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Icon name="edit" className="text-[15px]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteGrade(g.id, g.name)}
+                                aria-label={`Delete ${g.name}`}
+                                className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Icon name="delete" className="text-[15px]" />
+                              </button>
+                            </div>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === 'courses' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Add Course Form */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-4">Add Course Config</h3>
-            <form onSubmit={handleAddCourse} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Course Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Introductory Physics"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary outline-none"
-                  value={newCourse.name}
-                  onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
-                  required
+        <div className="grid gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+          <Card className="flex flex-col gap-4 h-fit">
+            <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Add a course</p>
+            <form onSubmit={handleAddCourse} className="flex flex-col gap-4">
+              <Field label="Course name">
+                <Input value={newCourse.name} onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })} placeholder="e.g. Mathematics" />
+              </Field>
+              <Field label="Course code" hint="Uppercased and used as the id.">
+                <Input value={newCourse.code} onChange={(e) => setNewCourse({ ...newCourse, code: e.target.value })} placeholder="e.g. MATH101" />
+              </Field>
+              <Field label="Department">
+                <Input
+                  value={newCourse.department}
+                  onChange={(e) => setNewCourse({ ...newCourse, department: e.target.value })}
+                  placeholder="e.g. Sciences"
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Course Code</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. PHY101"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary outline-none"
-                    value={newCourse.code}
-                    onChange={(e) => setNewCourse({ ...newCourse, code: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Department</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Science"
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary outline-none"
-                    value={newCourse.department}
-                    onChange={(e) => setNewCourse({ ...newCourse, department: e.target.value })}
-                  />
-                </div>
-              </div>
-              <button 
-                type="submit"
-                className="w-full py-3 bg-indigo-650 text-white rounded-lg text-xs font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
-              >
-                <Icon name="add" /> Register Subject
-              </button>
+              </Field>
+              <Button type="submit" icon="add" block disabled={!newCourse.name || !newCourse.code}>
+                Add course
+              </Button>
             </form>
-          </div>
+          </Card>
 
-          {/* Courses List */}
-          <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-               <h3 className="font-bold text-slate-900 dark:text-white text-base">Subjects & Courses Catalog</h3>
-               <p className="text-xs text-slate-500">Master roster of academic curriculum directories.</p>
-             </div>
-             <div className="overflow-x-auto">
-               <table className="w-full text-left">
-                  <thead className="bg-slate-50 dark:bg-slate-900/50 text-[10px] uppercase font-bold text-slate-500">
-                    <tr>
-                      <th className="px-6 py-4">Code</th>
-                      <th className="px-6 py-4">Course Name</th>
-                      <th className="px-6 py-4">Department</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-                    {courses.map(c => (
-                      <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                        <td className="px-6 py-4 font-mono font-bold text-primary">{c.code}</td>
-                        <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{c.name}</td>
-                        <td className="px-6 py-4 text-slate-500 font-semibold">{c.department || 'General'}</td>
-                        <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
-                           <button 
-                             onClick={() => setEditingCourse(c)}
-                             className="text-xs font-bold text-primary hover:underline"
-                           >
-                             Edit
-                           </button>
-                           <button 
-                             onClick={() => handleDeleteCourse(c.id, c.name)}
-                             className="text-xs font-bold text-red-500 hover:underline"
-                           >
-                             Delete
-                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {courses.length === 0 && (
+          <div className="flex flex-col gap-3">
+            <SectionHeading>Course catalogue ({courses.length})</SectionHeading>
+            {courses.length === 0 ? (
+              <EmptyState icon="menu_book" title="No courses yet" body="Courses here become assignable to teachers and appear on report cards." />
+            ) : (
+              <Card pad={false}>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-900/40">
                       <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No courses config defined.</td>
+                        <Th>Course</Th>
+                        <Th>Code</Th>
+                        <Th>Department</Th>
+                        <Th className="text-right">Actions</Th>
                       </tr>
-                    )}
-                  </tbody>
-               </table>
-             </div>
+                    </thead>
+                    <tbody>
+                      {courses.map((c) => (
+                        <tr key={c.id}>
+                          <Td className="font-semibold text-slate-900 dark:text-white">{c.name}</Td>
+                          <Td>
+                            <Badge tone="blue">{c.code}</Badge>
+                          </Td>
+                          <Td className="text-slate-500">{c.department || 'General'}</Td>
+                          <Td className="text-right">
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setEditingCourse(c)}
+                                aria-label={`Edit ${c.name}`}
+                                className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-primary flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Icon name="edit" className="text-[15px]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCourse(c.id, c.name)}
+                                aria-label={`Delete ${c.name}`}
+                                className="size-8 rounded-[10px] bg-slate-50 dark:bg-slate-900/40 text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                              >
+                                <Icon name="delete" className="text-[15px]" />
+                              </button>
+                            </div>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
           </div>
         </div>
       )}
 
-      {/* System Settings Tab */}
+      {activeTab === 'grading' && (
+        !scale ? (
+          <SkeletonTable rows={5} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <Card className="flex flex-col gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Assessment weighting</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">
+                  How a subject total is made up. Teachers cannot enter an exam score above this maximum.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="Continuous assessment" className="w-40">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={scale.caMax}
+                    onChange={(e) => setScale({ ...scale, caMax: Number(e.target.value) || 0 })}
+                    className="text-right"
+                  />
+                </Field>
+                <span className="text-base text-slate-300 pb-2.5">+</span>
+                <Field label="Terminal exam" className="w-40">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={scale.examMax}
+                    onChange={(e) => setScale({ ...scale, examMax: Number(e.target.value) || 0 })}
+                    className="text-right"
+                  />
+                </Field>
+                <span className="text-base text-slate-300 pb-2.5">=</span>
+                <Field label="Subject total" className="w-40">
+                  <Input value={Number(scale.caMax) + Number(scale.examMax)} readOnly className="text-right bg-slate-50 dark:bg-slate-900/40 font-bold" />
+                </Field>
+                <Field label="Pass mark" className="w-40">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={scale.passMark}
+                    onChange={(e) => setScale({ ...scale, passMark: Number(e.target.value) || 0 })}
+                    className="text-right"
+                  />
+                </Field>
+              </div>
+            </Card>
+
+            <Card className="flex flex-col gap-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Grading bands</p>
+                  <p className="mt-1 text-[11.5px] text-slate-500">
+                    Every mark from 0 to 100 must fall in exactly one band.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  icon="add"
+                  onClick={() => setScale({ ...scale, bands: [...scale.bands, { label: '', minScore: 0, maxScore: 0, description: '', tone: 'blue' }] })}
+                >
+                  Add band
+                </Button>
+              </div>
+
+              {coverage.ok ? (
+                <InlineNote tone="mint" icon="check_circle">
+                  0&ndash;100 is fully covered, with no gaps or overlaps.
+                </InlineNote>
+              ) : (
+                <InlineNote tone="butter" icon="warning">
+                  <span className="font-semibold">Marks {coverage.gaps.join(', ')} are not covered by any band.</span> A
+                  student scoring in that range would print with no grade. Saving is blocked until it is fixed.
+                </InlineNote>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <div className="hidden md:grid grid-cols-[90px_84px_84px_minmax(0,1fr)_120px_40px] gap-2.5 px-3 pb-1">
+                  {['Label', 'From', 'To', 'Description on the report card', 'Colour', ''].map((h) => (
+                    <span key={h} className="text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">{h}</span>
+                  ))}
+                </div>
+
+                {[...scale.bands]
+                  .map((b, i) => ({ b, i }))
+                  .sort((x, y) => Number(y.b.minScore) - Number(x.b.minScore))
+                  .map(({ b, i }) => (
+                    <div key={i} className="grid grid-cols-2 md:grid-cols-[90px_84px_84px_minmax(0,1fr)_120px_40px] gap-2.5 items-center bg-slate-50 dark:bg-slate-900/40 rounded-[13px] p-2.5">
+                      <Input value={b.label} onChange={(e) => setBand(i, { label: e.target.value })} aria-label="Band label" className="font-semibold" />
+                      <Input type="number" min={0} max={100} value={b.minScore} onChange={(e) => setBand(i, { minScore: Number(e.target.value) })} aria-label="From" className="text-right" />
+                      <Input type="number" min={0} max={100} value={b.maxScore} onChange={(e) => setBand(i, { maxScore: Number(e.target.value) })} aria-label="To" className="text-right" />
+                      <Input value={b.description || ''} onChange={(e) => setBand(i, { description: e.target.value })} aria-label="Description" placeholder="e.g. Excellent" />
+                      <Select value={b.tone || 'blue'} onChange={(e) => setBand(i, { tone: e.target.value })} aria-label="Colour">
+                        <option value="mint">Green</option>
+                        <option value="blue">Blue</option>
+                        <option value="butter">Amber</option>
+                        <option value="blush">Red</option>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={() => setScale({ ...scale, bands: scale.bands.filter((_, j) => j !== i) })}
+                        aria-label={`Delete band ${b.label || i + 1}`}
+                        className="size-9 justify-self-end rounded-[10px] bg-surface-light dark:bg-surface-dark text-slate-500 hover:text-danger flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <Icon name="delete" className="text-[15px]" />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+
+              <InlineNote tone="blush" icon="warning">
+                Changing a live scale does not rewrite report cards already released &mdash; those keep the grade they were
+                printed with. The new scale applies to every batch approved from now on, and the change is written to the
+                audit log with your name.
+              </InlineNote>
+
+              <div className="flex justify-end">
+                <Button icon="save" loading={savingScale} disabled={!coverage.ok} onClick={handleSaveScale}>
+                  Save grading scale
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )
+      )}
+
       {activeTab === 'system' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Account Security */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
-            <div>
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Account Security</h3>
-              <p className="text-xs text-slate-500 mt-1">Change your administrator password.</p>
-            </div>
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Current Password</label>
-                <input
-                  type="password"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">New Password</label>
-                <input
-                  type="password"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  minLength={8}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Confirm New Password</label>
-                <input
-                  type="password"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  minLength={8}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={changingPassword}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
-              >
-                <Icon name={changingPassword ? 'sync' : 'lock_reset'} className={changingPassword ? 'animate-spin' : ''} />
-                {changingPassword ? 'Updating...' : 'Update Password'}
-              </button>
-            </form>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatTile tint="blue" icon="class" label="Class levels" value={grades.length} />
+            <StatTile tint="lilac" icon="menu_book" label="Courses" value={courses.length} />
+            <StatTile tint="mint" icon="school" label="Teaching staff" value={teachers.length} />
+            <StatTile tint="peach" icon="history" label="Audit entries" value={auditLogs.length} />
           </div>
 
-          {/* Term Configuration */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
+          <Card className="flex flex-col gap-4">
             <div>
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Academic Calendar Settings</h3>
-              <p className="text-xs text-slate-500 mt-1">Configure active school term/semester system parameters.</p>
+              <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">School details</p>
+              <p className="mt-1 text-[11.5px] text-slate-500">
+                Printed at the top of every report card, on screen and in the PDF. Anything left blank is simply left off.
+              </p>
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Active School Term / Semester</label>
-                <select
-                  value={currentTerm}
-                  onChange={(e) => setCurrentTerm(e.target.value)}
-                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                >
-                  <option value="Term 1">Term 1</option>
-                  <option value="Term 2">Term 2</option>
-                  <option value="Term 3">Term 3</option>
-                </select>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800/80">
-                <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                  Updating this global active term determines where fee invoices are allocated by default when recorded, and updates statements displayed to parents.
-                </p>
-              </div>
-
-              <button
-                onClick={handleSaveTerm}
-                disabled={savingTerm}
-                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all disabled:opacity-50"
-              >
-                <Icon name={savingTerm ? 'sync' : 'save'} className={savingTerm ? 'animate-spin' : ''} />
-                {savingTerm ? 'Saving...' : 'Save Configuration'}
-              </button>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="School name">
+                <Input
+                  value={school.school_name}
+                  onChange={(e) => setSchool({ ...school, school_name: e.target.value })}
+                  placeholder="e.g. Riverside Academy"
+                />
+              </Field>
+              <Field label="Address">
+                <Input
+                  value={school.school_address}
+                  onChange={(e) => setSchool({ ...school, school_address: e.target.value })}
+                  placeholder="e.g. 14 Independence Ave, Accra"
+                />
+              </Field>
+              <Field label="Phone">
+                <Input
+                  value={school.school_phone}
+                  onChange={(e) => setSchool({ ...school, school_phone: e.target.value })}
+                  placeholder="e.g. +233 30 000 0000"
+                />
+              </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={school.school_email}
+                  onChange={(e) => setSchool({ ...school, school_email: e.target.value })}
+                  placeholder="e.g. office@school.edu"
+                />
+              </Field>
             </div>
-          </div>
-
-          {/* Student Promotions tool */}
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
-            <div>
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Batch Student Promotions</h3>
-              <p className="text-xs text-slate-500 mt-1">Bulk transition student enrollments to new class levels.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Promote From</label>
-                  <select
-                    value={fromClass}
-                    onChange={(e) => setFromClass(e.target.value)}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                  >
-                    <option value="">-- Choose Class --</option>
-                    {grades.map(g => (
-                      <option key={g.id} value={g.name}>{g.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Promote To</label>
-                  <select
-                    value={toClass}
-                    onChange={(e) => setToClass(e.target.value)}
-                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                  >
-                    <option value="">-- Choose Class --</option>
-                    {grades.map(g => (
-                      <option key={g.id} value={g.name}>{g.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-900/40">
-                <p className="text-xs text-slate-550 leading-relaxed font-semibold">
-                  <Icon name="warning" className="text-amber-500 inline mr-1 text-sm align-middle animate-pulse" />
-                  <strong>Real-Time Allocation Notice</strong>: This operation updates the grade records for all students in the source class. The students will be moved immediately, making them available in the dashboards of the destination class instructors.
-                </p>
-              </div>
-
-              <button
-                onClick={handlePromote}
-                disabled={promoting || !fromClass || !toClass}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-indigo-600 text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:from-primary/95 hover:to-indigo-700 transition-all disabled:opacity-50"
-              >
-                <Icon name={promoting ? 'sync' : 'arrow_forward'} className={promoting ? 'animate-spin' : ''} />
-                {promoting ? 'Promoting...' : 'Execute Batch Promotion'}
-              </button>
-            </div>
-          </div>
-
-          {/* Activity Logs Confirmation Feed */}
-          <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div>
-                   <h3 className="font-bold text-slate-900 dark:text-white text-base">System Audit & Promotion Logs</h3>
-                   <p className="text-xs text-slate-555">Real-time confirmation logs of configuration adjustments and promotions.</p>
-                </div>
-                <Icon name="history" className="text-slate-400 text-xl" />
-             </div>
-             
-             <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-80 overflow-y-auto">
-                {auditLogs.filter(log => log.type === 'config_change' || log.action?.toLowerCase().includes('promotion')).map((log, i) => (
-                   <div key={log.id || i} className="p-5 flex items-start gap-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                      <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${log.action?.toLowerCase().includes('promotion') ? 'bg-indigo-50 text-indigo-650 dark:bg-indigo-900/20 dark:text-indigo-400' : 'bg-primary/5 text-primary'}`}>
-                         <Icon name={log.action?.toLowerCase().includes('promotion') ? 'trending_up' : 'settings'} className="text-base" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                         <div className="flex justify-between items-start gap-2">
-                            <p className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase">{log.action}</p>
-                            <span className="text-[10px] font-bold text-slate-400 shrink-0">
-                               {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : new Date(log.timestamp).toLocaleString()}
-                            </span>
-                         </div>
-                         <p className="text-xs text-slate-550 dark:text-slate-400 mt-1 font-medium">{log.details}</p>
-                         <p className="text-[10px] text-slate-400 mt-1 font-semibold flex items-center gap-1">
-                            <Icon name="person" className="text-xs" /> Executed by: {log.userName || log.userEmail || 'System'}
-                         </p>
-                      </div>
-                   </div>
-                ))}
-                {auditLogs.filter(log => log.type === 'config_change' || log.action?.toLowerCase().includes('promotion')).length === 0 && (
-                   <div className="p-8 text-center text-xs text-slate-500 italic">No activity logs recorded yet.</div>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Preview: <span className="font-semibold text-slate-600 dark:text-slate-300">{school.school_name.trim() || 'Your school'}</span>
+                {[school.school_address, school.school_phone, school.school_email].some((v) => v.trim()) && (
+                  <>
+                    {' — '}
+                    {[school.school_address, school.school_phone, school.school_email].map((v) => v.trim()).filter(Boolean).join('  ·  ')}
+                  </>
                 )}
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Grade Modal */}
-      {editingGrade && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Edit Grade Details</h3>
-                <p className="text-xs text-slate-555 mt-0.5">Modify base fee policies for {editingGrade.name}</p>
-              </div>
-              <button 
-                onClick={() => setEditingGrade(null)}
-                className="size-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <Icon name="close" />
-              </button>
+              </p>
+              <Button icon="save" loading={savingSchool} onClick={handleSaveSchool}>
+                Save school details
+              </Button>
             </div>
-            
-            <form onSubmit={handleEditGrade}>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Grade Level Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-950 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                    value={editingGrade.name}
-                    onChange={(e) => setEditingGrade({ ...editingGrade, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Base Tuition Rate (GHS)</label>
-                  <div className="relative mt-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">GH₵</span>
-                    <input 
-                      type="number" 
-                      className="w-full pl-14 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                      value={editingGrade.baseFee}
-                      onChange={(e) => setEditingGrade({ ...editingGrade, baseFee: parseFloat(e.target.value) || 0 })}
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Class Teacher</label>
-                  <select
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                    value={editingGrade.classTeacherId || ''}
-                    onChange={(e) => setEditingGrade({ ...editingGrade, classTeacherId: e.target.value || null })}
-                  >
-                    <option value="">Not assigned</option>
-                    {teachers.map(t => (
-                      <option key={t.uid} value={t.uid}>{t.name}</option>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="flex flex-col gap-4">
+              <div>
+                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Active academic term</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">
+                  Report entry, the assessment book and fees all default to this term.
+                </p>
+              </div>
+              <Field label="Current term">
+                <Select value={currentTerm} onChange={(e) => setCurrentTerm(e.target.value)}>
+                  {TERMS.map((t) => (
+                    <option key={t}>{t}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Button icon="save" loading={savingTerm} onClick={handleSaveTerm}>
+                Save active term
+              </Button>
+            </Card>
+
+            <Card className="flex flex-col gap-4">
+              <div>
+                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Batch promotion</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">Move every student from one class level to the next.</p>
+              </div>
+              <div className="flex items-end gap-3">
+                <Field label="From" className="flex-1">
+                  <Select value={fromClass} onChange={(e) => setFromClass(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {grades.map((g) => (
+                      <option key={g.id} value={g.name}>
+                        {g.name}
+                      </option>
                     ))}
-                  </select>
-                  <p className="text-[10px] text-slate-450 mt-1 italic">The class teacher merges all subject teachers' scores into the final report card and submits it for approval.</p>
-                </div>
+                  </Select>
+                </Field>
+                <Icon name="arrow_forward" className="text-[18px] text-slate-400 mb-3" />
+                <Field label="To" className="flex-1">
+                  <Select value={toClass} onChange={(e) => setToClass(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {grades.map((g) => (
+                      <option key={g.id} value={g.name}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               </div>
-              <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setEditingGrade(null)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-655 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs font-bold transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/95 transition-all"
-                >
-                  Save Changes
-                </button>
+              <InlineNote tone="blush" icon="warning">
+                This moves students immediately and reassigns them to the destination class&rsquo;s teachers. It cannot be
+                undone in one step.
+              </InlineNote>
+              <Button variant="danger" loading={promoting} disabled={!fromClass || !toClass} onClick={handlePromote}>
+                Promote students
+              </Button>
+            </Card>
+
+            <Card className="flex flex-col gap-4">
+              <div>
+                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Arrears</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">
+                  Carry unpaid balances from earlier terms into <span className="font-semibold">{currentTerm}</span>, so
+                  they stop hiding behind a term filter.
+                </p>
               </div>
-            </form>
+
+              {arrearsPreview === null ? (
+                <Button variant="secondary" icon="history" onClick={previewArrears}>
+                  Check for arrears
+                </Button>
+              ) : arrearsPreview.students.length === 0 ? (
+                <InlineNote tone="mint" icon="check_circle">
+                  Nothing outstanding from earlier terms. Nobody is in arrears.
+                </InlineNote>
+              ) : (
+                <>
+                  <div className="bg-tint-blush rounded-[14px] px-4 py-3.5">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">To carry into {currentTerm}</p>
+                    <p className="mt-1 text-xl font-bold tracking-[-0.03em] text-ink-blush">{ghs(arrearsPreview.total)}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      across {arrearsPreview.students.length} student{arrearsPreview.students.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                    {arrearsPreview.students.map((st: any) => (
+                      <div key={st.studentId} className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl px-3 py-2">
+                        <span className="text-[12px] text-slate-700 dark:text-slate-300 truncate">{st.studentName || st.studentId}</span>
+                        <span className="text-[12px] font-semibold text-ink-blush shrink-0">{ghs(st.owed)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <InlineNote icon="info">
+                    One arrears charge is raised per student in {currentTerm}. The charges it replaces stay on record,
+                    marked as carried, so nobody is billed twice and the history stays auditable.
+                  </InlineNote>
+                  <div className="flex gap-2.5">
+                    <Button variant="secondary" block onClick={() => setArrearsPreview(null)}>
+                      Cancel
+                    </Button>
+                    <Button block icon="history" loading={carrying} onClick={handleCarryForward}>
+                      Carry forward
+                    </Button>
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <Card className="flex flex-col gap-4">
+              <div>
+                <p className="text-[15px] font-bold tracking-[-0.02em] text-slate-900 dark:text-white">Your password</p>
+                <p className="mt-1 text-[11.5px] text-slate-500">At least 8 characters.</p>
+              </div>
+              <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+                <Field label="Current password">
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                </Field>
+                <Field label="New password">
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    invalid={newPassword.length > 0 && newPassword.length < 8}
+                  />
+                </Field>
+                <Field
+                  label="Confirm new password"
+                  error={confirmPassword.length > 0 && confirmPassword !== newPassword ? 'Does not match.' : undefined}
+                >
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    invalid={confirmPassword.length > 0 && confirmPassword !== newPassword}
+                  />
+                </Field>
+                <Button type="submit" icon="key" loading={changingPassword} disabled={!currentPassword || !newPassword}>
+                  Change password
+                </Button>
+              </form>
+            </Card>
+
           </div>
         </div>
       )}
 
-      {/* Edit Course Modal */}
-      {editingCourse && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Edit Course Details</h3>
-                <p className="text-xs text-slate-555 mt-0.5">Modify parameters for {editingCourse.code}</p>
-              </div>
-              <button 
-                onClick={() => setEditingCourse(null)}
-                className="size-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+      {/* Edit drawers */}
+      <Drawer
+        open={!!editingGrade}
+        onClose={() => setEditingGrade(null)}
+        title="Edit class level"
+        subtitle={editingGrade?.id}
+        footer={
+          <>
+            <Button variant="secondary" block onClick={() => setEditingGrade(null)}>
+              Cancel
+            </Button>
+            <Button block onClick={handleEditGrade}>
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        {editingGrade && (
+          <form onSubmit={handleEditGrade} className="flex flex-col gap-4">
+            <Field label="Class level name">
+              <Input value={editingGrade.name} onChange={(e) => setEditingGrade({ ...editingGrade, name: e.target.value })} />
+            </Field>
+            <Field label="Base tuition fee (GHS)">
+              <Input
+                type="number"
+                min={0}
+                value={editingGrade.baseFee}
+                onChange={(e) => setEditingGrade({ ...editingGrade, baseFee: Number(e.target.value) || 0 })}
+                className="text-right"
+              />
+            </Field>
+            <Field label="Class teacher" hint="Whoever merges and submits this class's report cards.">
+              <Select
+                value={editingGrade.classTeacherId ?? ''}
+                onChange={(e) => setEditingGrade({ ...editingGrade, classTeacherId: e.target.value || null })}
               >
-                <Icon name="close" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleEditCourse}>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Course Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                    value={editingCourse.name}
-                    onChange={(e) => setEditingCourse({ ...editingCourse, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Code</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold text-slate-500 outline-none cursor-not-allowed"
-                      value={editingCourse.code}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Department</label>
-                    <input 
-                      type="text" 
-                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-900 dark:text-white focus:ring-primary focus:border-primary outline-none"
-                      value={editingCourse.department}
-                      onChange={(e) => setEditingCourse({ ...editingCourse, department: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setEditingCourse(null)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs font-bold transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-lg shadow-indigo-200 transition-all"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+                <option value="">Not assigned</option>
+                {teachers.map((t) => (
+                  <option key={t.uid} value={t.uid}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </form>
+        )}
+      </Drawer>
+
+      <Drawer
+        open={!!editingCourse}
+        onClose={() => setEditingCourse(null)}
+        title="Edit course"
+        subtitle={editingCourse?.id}
+        footer={
+          <>
+            <Button variant="secondary" block onClick={() => setEditingCourse(null)}>
+              Cancel
+            </Button>
+            <Button block onClick={handleEditCourse}>
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        {editingCourse && (
+          <form onSubmit={handleEditCourse} className="flex flex-col gap-4">
+            <Field label="Course name">
+              <Input value={editingCourse.name} onChange={(e) => setEditingCourse({ ...editingCourse, name: e.target.value })} />
+            </Field>
+            <Field label="Course code">
+              <Input value={editingCourse.code} onChange={(e) => setEditingCourse({ ...editingCourse, code: e.target.value })} />
+            </Field>
+            <Field label="Department">
+              <Input
+                value={editingCourse.department}
+                onChange={(e) => setEditingCourse({ ...editingCourse, department: e.target.value })}
+              />
+            </Field>
+          </form>
+        )}
+      </Drawer>
+    </WorkSurface>
   );
 };
