@@ -4,6 +4,7 @@ import { View } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { Avatar } from './ui';
 import { useNotifications, type Notification } from '../lib/useNotifications';
+import { useTheme, type Theme } from '../lib/theme';
 
 /* ---------------------------------------------------------------------------
    Shells
@@ -173,6 +174,61 @@ const NotificationsButton: React.FC<{ onNavigate: (v: View) => void }> = ({ onNa
   );
 };
 
+/* --- Theme toggle --------------------------------------------------------- */
+
+const THEME_OPTIONS: { value: Theme; icon: string; label: string }[] = [
+  { value: 'light', icon: 'sun', label: 'Light' },
+  { value: 'dark', icon: 'moon', label: 'Dark' },
+  { value: 'system', icon: 'monitor', label: 'Match system' },
+];
+
+/**
+ * Three states rather than a two-way switch: "match system" is a distinct choice,
+ * and collapsing it into on/off silently freezes the app in whichever mode the
+ * user happened to be in when they first touched the control.
+ */
+export const ThemeToggle: React.FC<{ variant?: 'rail' | 'plain' }> = ({ variant = 'rail' }) => {
+  const { theme, setTheme } = useTheme();
+  const onRail = variant === 'rail';
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Colour theme"
+      className={`flex gap-1 p-[3px] rounded-xl ${
+        onRail ? 'bg-white/[0.12]' : 'bg-slate-100 dark:bg-slate-800'
+      }`}
+    >
+      {THEME_OPTIONS.map((o) => {
+        const on = theme === o.value;
+        return (
+          <button
+            key={o.value}
+            role="radio"
+            aria-checked={on}
+            title={o.label}
+            onClick={() => setTheme(o.value)}
+            className={`flex-1 flex items-center justify-center py-[7px] rounded-[9px] transition-colors
+              focus-visible:outline-2 focus-visible:outline-offset-1
+              ${
+                onRail
+                  ? on
+                    ? 'bg-white text-primary focus-visible:outline-white'
+                    : 'text-white/[0.66] hover:text-white hover:bg-white/[0.1] focus-visible:outline-white'
+                  : on
+                    ? 'bg-primary text-white focus-visible:outline-primary'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus-visible:outline-primary'
+              }`}
+          >
+            <Icon name={o.icon} className="text-[16px]" />
+            <span className="sr-only">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 const Rail: React.FC<{
   portal: string;
   nav: NavEntry[];
@@ -202,9 +258,13 @@ const Rail: React.FC<{
 
       <NotificationsButton onNavigate={onNavigate} />
 
+      <div className="mt-auto px-0.5">
+        <ThemeToggle />
+      </div>
+
       <button
         onClick={() => signOut()}
-        className="mt-auto w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors"
+        className="w-full flex items-center gap-[11px] px-3 py-[9px] rounded-xl text-[13px] font-medium text-white/[0.78] hover:bg-white/[0.14] hover:text-white transition-colors"
       >
         <Icon name="logout" className="text-[18px]" />
         Sign out

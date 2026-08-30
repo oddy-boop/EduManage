@@ -71,7 +71,11 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
   }
 
   const studentName = child.name || 'Student';
-  const studentId = child.id || child.loginId || '—';
+  // Match the PDF: the admission number is the school's record identifier, the login
+  // ID is the fallback, and the internal database key is never shown to a parent.
+  const admissionNo = (child.admissionNumber || '').trim();
+  const idLabel = admissionNo ? 'Admission No.' : 'Student ID';
+  const studentId = admissionNo || (child.loginId || '').trim() || '—';
   const studentClass = child.classId || 'Unassigned';
   const termName = report.term || 'Current Term';
   const session = report.session || '';
@@ -173,7 +177,7 @@ export const ParentReportDetail: React.FC<ParentReportDetailProps> = ({ onNaviga
           {[
             ['Student', studentName],
             ['Class', studentClass],
-            ['Student ID', studentId],
+            [idLabel, studentId],
             ['Overall average', average != null ? `${Math.round(average)}%` : '—'],
           ].map(([label, value]) => (
             <div key={label}>

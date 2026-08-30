@@ -419,7 +419,10 @@ export const AdminSettings: React.FC = () => {
               <Field label="Class level name" hint="The id is derived from this, e.g. “Grade 7” → grade-7.">
                 <Input value={newGrade.name} onChange={(e) => setNewGrade({ ...newGrade, name: e.target.value })} placeholder="e.g. Grade 7" />
               </Field>
-              <Field label="Base tuition fee (GHS)">
+              <Field
+                label="Base tuition fee (GHS)"
+                hint="Used as the default amount when an admin records a tuition fee for this class. Nobody is billed automatically."
+              >
                 <Input
                   type="number"
                   min={0}

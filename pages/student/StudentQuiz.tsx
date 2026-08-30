@@ -56,11 +56,19 @@ export const StudentQuiz: React.FC = () => {
       setIsSubmitted(true);
     } catch (err) {
       console.error('Failed to submit quiz result:', err);
-      setError(
-        auto
-          ? 'Time ran out but we could not save your answers. Tell your teacher before you leave.'
-          : 'We could not save your answers. Check your connection and try again.',
-      );
+      // "You already sat this" is not a failure the student can retry their way out
+      // of, so it must not be dressed up as a connection problem.
+      if ((err as { code?: string })?.code === 'already_submitted') {
+        setError(
+          'You have already submitted this quiz, so this attempt was not saved. Ask your teacher if you need another go.',
+        );
+      } else {
+        setError(
+          auto
+            ? 'Time ran out but we could not save your answers. Tell your teacher before you leave.'
+            : 'We could not save your answers. Check your connection and try again.',
+        );
+      }
     } finally {
       setSubmitting(false);
     }

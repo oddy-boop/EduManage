@@ -11,6 +11,19 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/index.css">
+    <script>
+      // Runs before first paint so a dark-mode user never sees a white flash.
+      // lib/theme.ts owns the same logic for the running app; this is only the
+      // startup application of an already-stored choice.
+      (function () {
+        try {
+          var t = localStorage.getItem('edumanage.theme') || 'system';
+          var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
 </head>
   <body class="bg-background-light text-slate-900 dark:bg-background-dark dark:text-slate-100">
     <div id="root"></div>

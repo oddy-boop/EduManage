@@ -39,6 +39,10 @@ export const AdminFees: React.FC = () => {
   const [dueDate, setDueDate] = useState('');
   const [initialStatus, setInitialStatus] = useState('pending');
   const [creating, setCreating] = useState(false);
+  const [gradeConfigs, setGradeConfigs] = useState<any[]>([]);
+  // True once the admin edits the amount by hand, so changing class afterwards
+  // never quietly overwrites a figure they typed deliberately.
+  const [amountTouched, setAmountTouched] = useState(false);
 
   useEffect(() => {
     const unsub = firestoreService.getAllFees((data) => {
@@ -46,9 +50,11 @@ export const AdminFees: React.FC = () => {
       setLoading(false);
     });
     const unsubStudents = firestoreService.getStudents(setStudents);
+    const unsubGrades = firestoreService.getGrades((data: any) => setGradeConfigs(data || []));
     return () => {
       unsub();
       unsubStudents();
+      unsubGrades();
     };
   }, []);
 
@@ -61,6 +67,34 @@ export const AdminFees: React.FC = () => {
     if (!selectedClass) return [];
     return students.filter((s) => s.classId === selectedClass).sort((a, b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
+
+  /**
+   * The base fee configured per grade in Settings is a DEFAULT, not a bill.
+   * Automatic billing was considered and deliberately not built — fees here are
+   * still raised one at a time by an admin, who can always override the figure.
+   * This just stops that number being a field you can fill in and never see again.
+   */
+  const baseFeeForClass = useMemo(() => {
+    if (!selectedClass) return null;
+    const cfg = gradeConfigs.find((g) => g.name === selectedClass || g.id === selectedClass);
+    const amount = Number(cfg?.baseFee ?? 0);
+    return Number.isFinite(amount) && amount > 0 ? amount : null;
+  }, [gradeConfigs, selectedClass]);
+
+  useEffect(() => {
+    if (!showCreate || amountTouched) return;
+    setFeeAmount(baseFeeForClass ?? 0);
+  }, [baseFeeForClass, showCreate, amountTouched]);
+
+  /**
+   * What to show under a student's name. The internal primary key ("student-1-id")
+   * means nothing to an administrator and matches nothing on a paper record —
+   * the admission number does.
+   */
+  const studentRef = (studentId: string) => {
+    const st = students.find((s) => s.id === studentId);
+    return (st?.admissionNumber || '').trim() || (st?.loginId || '').trim() || '';
+  };
 
   const openPayment = (fee: any) => {
     setEditingFee(fee);
@@ -127,6 +161,7 @@ export const AdminFees: React.FC = () => {
       setSelectedStudentId('');
       setFeeType('Tuition Fee');
       setFeeAmount(0);
+      setAmountTouched(false);
       setDueDate('');
       setSelectedTerm('Term 2');
       setInitialStatus('pending');
@@ -323,7 +358,7 @@ export const AdminFees: React.FC = () => {
                             <p className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">
                               {f.studentName || 'Unknown student'}
                             </p>
-                            <p className="text-[10.5px] text-slate-400 truncate">{f.studentId}</p>
+                            <p className="text-[10.5px] text-slate-400 truncate">{studentRef(f.studentId)}</p>
                           </div>
                         </div>
                       </Td>
@@ -482,13 +517,24 @@ export const AdminFees: React.FC = () => {
           </Field>
 
           <div className="flex gap-3">
-            <Field label="Amount (GHS)" className="flex-1">
+            <Field
+              label="Amount (GHS)"
+              className="flex-1"
+              hint={
+                baseFeeForClass != null && !amountTouched
+                  ? `Default for ${selectedClass}: ${ghs(baseFeeForClass)}. Edit to override.`
+                  : undefined
+              }
+            >
               <Input
                 type="number"
                 min={0}
                 inputMode="decimal"
                 value={feeAmount || ''}
-                onChange={(e) => setFeeAmount(Number(e.target.value) || 0)}
+                onChange={(e) => {
+                  setAmountTouched(true);
+                  setFeeAmount(Number(e.target.value) || 0);
+                }}
               />
             </Field>
             <Field label="Term" className="flex-1">

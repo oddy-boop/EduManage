@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from './lib/AuthContext';
+import { initTheme } from './lib/theme';
+
+initTheme();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

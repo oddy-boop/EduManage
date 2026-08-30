@@ -9,7 +9,7 @@ import {
   Menu, MoreVertical, Pencil, Percent, Plus, Presentation, Printer, QrCode, Quote, RefreshCw, Rocket,
   Save, School, Search, Send, Settings, ShieldCheck, SlidersHorizontal, SquareCheck, Table,
   Trash2, TrendingUp, TriangleAlert, Trophy, Undo2, User, UserCheck, UserPlus, Users, Wallet,
-  WifiOff, X, Zap,
+  WifiOff, X, Zap, Sun, Moon, Monitor, RotateCcw,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -131,6 +131,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   offline: WifiOff,
   arrow_up_right: ArrowUpRight,
   school_cap: School,
+  sun: Sun,
+  moon: Moon,
+  monitor: Monitor,
+  reset: RotateCcw,
 };
 
 interface IconProps {

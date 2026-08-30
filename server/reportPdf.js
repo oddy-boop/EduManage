@@ -74,9 +74,17 @@ export function renderReportPdf({ report, student, bands, caMax, examMax, school
     doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7).text(label.toUpperCase(), x, blockTop + 12, { width: W / 4 - 14 });
     doc.fillColor(INK).font('Helvetica-Bold').fontSize(11).text(value, x, blockTop + 26, { width: W / 4 - 14 });
   };
+  // The admission number is the school's own record identifier and is what belongs
+  // on a document that goes home. Fall back to the login ID only when a school does
+  // not use admission numbers, and never print the internal database key.
+  const admissionNo = (student?.admissionNumber || '').trim();
+  const loginId = (student?.loginId || '').trim();
+  const idLabel = admissionNo ? 'Admission No.' : 'Student ID';
+  const idValue = admissionNo || loginId || '—';
+
   cell('Student', student?.name || report.studentId, 0);
   cell('Class', student?.classId || '—', 1);
-  cell('Student ID', student?.id || report.studentId, 2);
+  cell(idLabel, idValue, 2);
   cell('Average', `${Math.round(average)}%`, 3);
   doc.y = blockTop + 54;
   doc.moveDown(1);

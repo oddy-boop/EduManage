@@ -174,10 +174,21 @@ export const AdminDashboard: React.FC<{ onNavigate: (view: View) => void }> = ({
         ) : (
           <div className="h-[190px] mt-3">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={finance.chartData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+              {/* The left margin used to be -18, which pulled the axis gutter off the
+                  canvas and sliced the first characters off every tick — "4,000"
+                  rendered as ")00". Compact ticks keep the gutter narrow honestly. */}
+              <BarChart data={finance.chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke="#c7d7fb" strokeDasharray="3 4" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} width={44} />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: '#94a3b8' }}
+                  width={42}
+                  tickFormatter={(v: number) =>
+                    v >= 1000 ? `${(v / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : String(v)
+                  }
+                />
                 <Tooltip
                   cursor={{ fill: 'rgba(25,93,230,0.08)' }}
                   contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 26px -12px rgba(15,23,42,.35)', fontSize: 12 }}

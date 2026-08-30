@@ -59,6 +59,7 @@ export const AdminRegistration: React.FC = () => {
   const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null);
   const [memberExtraInfo, setMemberExtraInfo] = useState<{ attendance?: any; fees?: any[]; reports?: any[] }>({});
 
+  const [allTeachers, setAllTeachers] = useState<any[]>([]);
   const [availableGrades, setAvailableGrades] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
 
@@ -75,6 +76,10 @@ export const AdminRegistration: React.FC = () => {
   // (class, course) pairs — replaces the old two flat lists, which multiplied out
   // into "teaches every one of their subjects in every one of their classes".
   const [teacherAssignments, setTeacherAssignments] = useState<{ classId: string; courseCode: string }[]>([]);
+  // Which class this teacher is the CLASS TEACHER of — a different thing from the
+  // classes they teach in. The class teacher is the one who merges every subject
+  // teacher's marks into a report card, so it lives on the grade, not the user.
+  const [classTeacherOf, setClassTeacherOf] = useState('');
 
   useEffect(() => {
     const getTime = (m: any) => {
@@ -93,6 +98,7 @@ export const AdminRegistration: React.FC = () => {
       });
     });
     const unsubTeachers = firestoreService.getTeachers((data) => {
+      setAllTeachers(data);
       setRecentMembers((prev) => {
         const rest = prev.filter((m) => m.type !== 'Teacher');
         return [...rest, ...data.map((t) => ({ ...t, id: t.uid, type: 'Teacher' }))]
@@ -167,7 +173,45 @@ export const AdminRegistration: React.FC = () => {
     setTeacherForm({ name: '', email: '', qualification: '', subjects: ['Mathematics'], assignedClasses: [], assignedCourses: [] });
     setParentForm({ name: '', email: '', contact: '' });
     setTeacherAssignments([]);
+    setClassTeacherOf('');
     setParentSearch('');
+  };
+
+  // Naming the person who is about to lose the role: silently reassigning it would
+  // strip their access to that class's report cards with nothing on screen to say so.
+  const displacedClassTeacher = (() => {
+    if (!classTeacherOf) return null;
+    const target = availableGrades.find((g: any) => g.name === classTeacherOf);
+    const holder = target?.classTeacherId;
+    if (!holder || holder === editingId) return null;
+    const person = allTeachers.find((t: any) => (t.uid || t.id) === holder);
+    return person?.name || 'Another teacher';
+  })();
+
+  /**
+   * Applies the class-teacher choice to grade_configs: clears whatever class this
+   * teacher held before, then claims the new one. Done after the user record
+   * exists, because the column carries a foreign key to users(uid).
+   */
+  const applyClassTeacher = async (teacherId: string, gradeName: string) => {
+    const previous = availableGrades.filter((g: any) => g.classTeacherId === teacherId && g.name !== gradeName);
+    for (const g of previous) {
+      await firestoreService.createGradeConfig(g.id, {
+        name: g.name,
+        baseFee: g.baseFee,
+        classTeacherId: null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    if (!gradeName) return;
+    const target = availableGrades.find((g: any) => g.name === gradeName);
+    if (!target || target.classTeacherId === teacherId) return;
+    await firestoreService.createGradeConfig(target.id, {
+      name: target.name,
+      baseFee: target.baseFee,
+      classTeacherId: teacherId,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   const handleRegister = async () => {
@@ -187,9 +231,11 @@ export const AdminRegistration: React.FC = () => {
         } else if (activeTab === 'teacher') {
           await firestoreService.updateUser(editingId, { ...teacherForm });
           await firestoreService.setTeacherAssignments(editingId, validAssignments);
+          await applyClassTeacher(editingId, classTeacherOf);
           await log(
             'Teacher Profile Update',
-            `Updated teacher profile for ${teacherForm.name} (Email: ${teacherForm.email}); ${validAssignments.length} class/subject assignment(s)`,
+            `Updated teacher profile for ${teacherForm.name} (Email: ${teacherForm.email}); ${validAssignments.length} class/subject assignment(s)` +
+              (classTeacherOf ? `; class teacher of ${classTeacherOf}` : '; not a class teacher'),
           );
         } else {
           await firestoreService.updateUser(editingId, { name: parentForm.name, email: parentForm.email });
@@ -218,9 +264,11 @@ export const AdminRegistration: React.FC = () => {
           avatar: `https://picsum.photos/seed/${teacherId}/100`,
         });
         if (validAssignments.length) await firestoreService.setTeacherAssignments(teacherId, validAssignments);
+        if (classTeacherOf) await applyClassTeacher(teacherId, classTeacherOf);
         await log(
           'Teacher Registration',
-          `Registered new teacher ${teacherForm.name} (Login ID: ${newMemberId}) with ${validAssignments.length} class/subject assignment(s)`,
+          `Registered new teacher ${teacherForm.name} (Login ID: ${newMemberId}) with ${validAssignments.length} class/subject assignment(s)` +
+            (classTeacherOf ? `; class teacher of ${classTeacherOf}` : ''),
         );
         setGeneratedPassword(created?.temporaryPassword || null);
       } else {
@@ -275,6 +323,8 @@ export const AdminRegistration: React.FC = () => {
         assignedClasses: member.assignedClasses || [],
         assignedCourses: member.assignedCourses || [],
       });
+      const uid = member.uid || member.id;
+      setClassTeacherOf(availableGrades.find((g: any) => g.classTeacherId === uid)?.name || '');
     }
     setSelectedMember(null);
   };
@@ -642,6 +692,28 @@ export const AdminRegistration: React.FC = () => {
                 {teacherAssignments.length === 0 && (
                   <InlineNote tone="butter" icon="warning">
                     With nothing here they cannot enter results for anyone, and no class will expect a subject from them.
+                  </InlineNote>
+                )}
+
+                <Field
+                  label="Class teacher of"
+                  hint="Optional, and separate from the list above. The class teacher merges every subject teacher's marks into a report card, adds remarks, and sends it to admin."
+                >
+                  <Select value={classTeacherOf} onChange={(e) => setClassTeacherOf(e.target.value)}>
+                    <option value="">Not a class teacher</option>
+                    {availableGrades.map((g) => (
+                      <option key={g.id} value={g.name}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                {displacedClassTeacher && (
+                  <InlineNote tone="peach" icon="warning">
+                    {displacedClassTeacher} is currently the class teacher for {classTeacherOf}. Saving moves that role to{' '}
+                    {teacherForm.name || 'this teacher'}, and {displacedClassTeacher} will lose access to that class&rsquo;s
+                    report cards.
                   </InlineNote>
                 )}
               </>

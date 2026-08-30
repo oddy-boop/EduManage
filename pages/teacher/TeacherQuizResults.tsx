@@ -23,6 +23,9 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
   const [roster, setRoster] = useState<any[]>([]);
   const [detailResult, setDetailResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -98,6 +101,24 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
       students.map((s, i) => ({ Rank: i + 1, Name: s.name, StudentID: s.id, Score: s.score, SubmittedAt: s.submittedAt })),
       `quiz_results_${selectedQuiz?.title || 'quiz'}.csv`,
     );
+  };
+
+
+  const handleResetAttempt = async () => {
+    if (!detailResult || !selectedQuiz) return;
+    setResetting(true);
+    setResetError(null);
+    try {
+      await firestoreService.resetQuizAttempt(selectedQuiz.id, detailResult.id);
+      // The results subscription will drop the row on its next poll; closing the
+      // drawer now stops the teacher staring at a score that no longer exists.
+      setDetailResult(null);
+      setConfirmReset(false);
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResetting(false);
+    }
   };
 
   if (loading) {
@@ -273,9 +294,40 @@ export const TeacherQuizResults: React.FC<TeacherQuizResultsProps> = ({ onNaviga
 
       <Drawer
         open={!!detailResult}
-        onClose={() => setDetailResult(null)}
+        onClose={() => {
+          setDetailResult(null);
+          setConfirmReset(false);
+          setResetError(null);
+        }}
         title={detailResult?.name ?? ''}
         subtitle={detailResult ? `${detailResult.score} correct` : undefined}
+        footer={
+          detailResult ? (
+            <div className="flex flex-col gap-2.5 w-full">
+              {resetError && <p className="text-[11.5px] text-ink-blush">{resetError}</p>}
+              {confirmReset ? (
+                <>
+                  <p className="text-[11.5px] text-slate-500 leading-relaxed">
+                    This deletes {detailResult.name}&rsquo;s score of {detailResult.score} and lets them sit the quiz
+                    again. It cannot be undone, and the reset is recorded in the audit log.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setConfirmReset(false)} disabled={resetting}>
+                      Cancel
+                    </Button>
+                    <Button icon="reset" onClick={handleResetAttempt} disabled={resetting}>
+                      {resetting ? 'Resetting…' : 'Yes, clear the attempt'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <Button variant="secondary" icon="reset" onClick={() => setConfirmReset(true)}>
+                  Allow a retake
+                </Button>
+              )}
+            </div>
+          ) : undefined
+        }
       >
         {detailResult && (
           <div className="flex flex-col gap-3">

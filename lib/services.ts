@@ -572,12 +572,29 @@ export const firestoreService = {
       body: JSON.stringify(data)
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'Failed to submit quiz result');
+    if (!response.ok) {
+      const err = new Error(body.error || 'Failed to submit quiz result') as Error & { code?: string };
+      // Lets the quiz screen tell "you already sat this" apart from a network
+      // failure, which need very different messages for a student mid-exam.
+      err.code = body.code;
+      throw err;
+    }
     return body;
   },
 
   getQuizResults(quizId: string, callback: (data: any[]) => void) {
     return mockOnSnapshot(`/api/quizResults?quizId=${encodeURIComponent(quizId)}`, callback);
+  },
+
+  /** Clears one student's attempt so they can retake. Teacher (own quiz) or admin only. */
+  async resetQuizAttempt(quizId: string, studentId: string) {
+    const response = await apiFetch(
+      `/api/quizResults/${encodeURIComponent(quizId)}/${encodeURIComponent(studentId)}`,
+      { method: 'DELETE' },
+    );
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Failed to reset that attempt');
+    return body;
   },
 
   // --- EVENTS ---

@@ -1285,18 +1285,26 @@ async function startServer() {
         }
       });
 
+      // One attempt, actually enforced. This previously upserted, which meant a
+      // student could reopen the link and overwrite their own score — while both
+      // the quiz screen and the teacher's share screen promised the opposite.
+      // DO NOTHING makes the unique constraint the arbiter; a teacher who wants to
+      // grant a retake clears the row through the reset route below.
       const resultId = crypto.randomBytes(9).toString('base64url');
       const queryStr = `
         INSERT INTO quiz_results (id, quiz_id, student_id, student_name, score, total_questions, correct_count, answers)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-        ON CONFLICT (quiz_id, student_id)
-        DO UPDATE SET score = EXCLUDED.score, total_questions = EXCLUDED.total_questions,
-                      correct_count = EXCLUDED.correct_count, answers = EXCLUDED.answers,
-                      student_name = EXCLUDED.student_name, submitted_at = NOW()
+        ON CONFLICT (quiz_id, student_id) DO NOTHING
         RETURNING *
       `;
       const params = [resultId, quizId, studentId, studentName || null, score, questions.length, correctCount, JSON.stringify(answers)];
       const result = await pool.query(queryStr, params);
+      if (result.rowCount === 0) {
+        return res.status(409).json({
+          error: 'You have already submitted this quiz. Ask your teacher if you need another attempt.',
+          code: 'already_submitted',
+        });
+      }
       res.json(rowToCamel(result.rows[0]));
     } catch (err) {
       dbError(res, err);
@@ -1318,6 +1326,51 @@ async function startServer() {
       }
       const result = await pool.query('SELECT * FROM quiz_results WHERE quiz_id = $1 ORDER BY score DESC, submitted_at ASC', [quizId]);
       res.json(result.rows.map(rowToCamel));
+    } catch (err) {
+      dbError(res, err);
+    }
+  });
+
+  // Clear one student's attempt so they can sit the quiz again. Owned by the
+  // teacher who created the quiz (or an admin) — a student cannot reach this,
+  // which is what keeps "one attempt" meaningful. Every reset is audited,
+  // because it discards a recorded score.
+  app.delete('/api/quizResults/:quizId/:studentId', authenticate, requireRole('Teacher', 'Admin'), async (req, res) => {
+    try {
+      const { quizId, studentId } = req.params;
+      const quizRes = await pool.query('SELECT teacher_id, title FROM quizzes WHERE id = $1', [quizId]);
+      if (quizRes.rowCount === 0) return res.status(404).json({ error: 'Quiz not found.' });
+      if (req.user.role !== 'Admin' && quizRes.rows[0].teacher_id !== req.user.uid) {
+        return res.status(403).json({ error: 'You can only reset attempts on your own quizzes.' });
+      }
+
+      const del = await pool.query(
+        'DELETE FROM quiz_results WHERE quiz_id = $1 AND student_id = $2 RETURNING *',
+        [quizId, studentId]
+      );
+      if (del.rowCount === 0) return res.status(404).json({ error: 'That student has no attempt to reset.' });
+
+      const cleared = rowToCamel(del.rows[0]);
+      // The token carries only uid and role, so read the actor's identity from the
+      // users table — an audit line naming nobody is not an audit line.
+      const actorRes = await pool.query('SELECT email, name FROM users WHERE uid = $1', [req.user.uid]);
+      const actor = actorRes.rows[0] || {};
+      await pool.query(
+        `INSERT INTO audit_logs (id, user_id, user_email, user_name, action, details, type, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [
+          crypto.randomBytes(9).toString('base64url'),
+          req.user.uid,
+          actor.email || '',
+          actor.name || '',
+          'Quiz Attempt Reset',
+          `Cleared ${cleared.studentName || studentId}'s attempt on "${quizRes.rows[0].title}" ` +
+            `(scored ${cleared.score}/${cleared.totalQuestions}). The student may now retake it.`,
+          'quiz_reset',
+        ]
+      );
+
+      res.json({ ok: true, cleared });
     } catch (err) {
       dbError(res, err);
     }
@@ -1782,7 +1835,7 @@ async function startServer() {
   app.get('/api/reports/:id/pdf', authenticate, async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT r.*, s.name AS student_name, s.class_id
+        `SELECT r.*, s.name AS student_name, s.class_id, s.admission_number, s.login_id
          FROM reports r LEFT JOIN students s ON s.id = r.student_id
          WHERE r.id = $1`,
         [req.params.id]
@@ -1807,7 +1860,13 @@ async function startServer() {
       const school = Object.fromEntries(settingsRes.rows.map(r => [r.key, r.value]));
 
       const report = rowToCamel(row);
-      const student = { id: row.student_id, name: row.student_name, classId: row.class_id };
+      const student = {
+        id: row.student_id,
+        name: row.student_name,
+        classId: row.class_id,
+        admissionNumber: row.admission_number,
+        loginId: row.login_id,
+      };
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${pdfFilename(student, report)}"`);
